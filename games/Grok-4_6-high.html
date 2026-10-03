@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Willow Pond</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #0b1020;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  canvas {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    background: #1a1c2c;
+    cursor: pointer;
+    outline: none;
+    touch-action: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="game" width="320" height="180" tabindex="0" aria-label="Willow Pond fishing game. Space to cast and hook. Hold Space to reel. L opens the collection log."></canvas>
+<script>
+(() => {
+  'use strict';
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const W = 320, H = 180;
+
+  const C = {
+    void: '#1a1c2c', steel: '#333c57', slate: '#566c86', silver: '#94b0c2',
+    white: '#f4f4f4', peach: '#ef7d57', gold: '#ffcd75', lime: '#a7f070',
+    green: '#38b764', pine: '#257179', navy: '#29366f', blue: '#3b5dc9',
+    sky: '#41a6f6', cyan: '#73eff7', wine: '#b13e53', plum: '#5d275d',
+    sky1: '#3a6aad', sky2: '#5b91c8', sky3: '#8bb7d9', cloud: '#dce8f0',
+    hill: '#2f5a48', hill2: '#3d7358', tree: '#24533f', tree2: '#2f6a4c',
+    water: '#1f5a78', water2: '#174a66', water3: '#123c56', foam: '#6fc4b8',
+    grass: '#3f7a3a', grass2: '#2f5e30', dirt: '#7a5532', dirt2: '#5c3e24',
+    dock: '#6b4426', dock2: '#8a5a32', dock3: '#4a2e18',
+    skin: '#efc39a', hat: '#d2a04a', hat2: '#b07e2e', shirt: '#3b5dc9',
+    pants: '#333c57', boot: '#4a2e18', line: '#94b0c2',
+    bar: '#a7f070', bar2: '#38b764', bar3: '#1e5c32',
+    track: '#16241c', wood: '#3e2a18', ink: '#f4f4f4'
+  };
+
+  const FISH = [
+    { name: 'Pebble Minnow',  diff: 'EASY',      shape: 'small',   col: '#94b0c2', fin: '#566c86', acc: '#f4f4f4', speed: 42,  erratic: 0.12, dart: 0.18, bar: 42, fill: 0.42, drain: 0.20, weight: 28, wait: [1.2, 2.6] },
+    { name: 'Dapple Bluegill',diff: 'EASY',      shape: 'round',   col: '#ef7d57', fin: '#b13e53', acc: '#ffcd75', speed: 50,  erratic: 0.20, dart: 0.28, bar: 38, fill: 0.38, drain: 0.22, weight: 22, wait: [1.3, 2.8] },
+    { name: 'Willow Perch',   diff: 'MEDIUM',    shape: 'stripe',  col: '#c9894a', fin: '#7a5532', acc: '#ffcd75', speed: 64,  erratic: 0.38, dart: 0.46, bar: 32, fill: 0.34, drain: 0.28, weight: 16, wait: [1.5, 3.2] },
+    { name: 'Copper Trout',   diff: 'MEDIUM',    shape: 'long',    col: '#38b764', fin: '#257179', acc: '#a7f070', speed: 72,  erratic: 0.48, dart: 0.58, bar: 30, fill: 0.32, drain: 0.30, weight: 14, wait: [1.6, 3.4] },
+    { name: 'Whisker Catfish',diff: 'HARD',      shape: 'whisker', col: '#566c86', fin: '#333c57', acc: '#94b0c2', speed: 58,  erratic: 0.70, dart: 0.72, bar: 26, fill: 0.28, drain: 0.36, weight: 9,  wait: [1.8, 3.8], sink: true },
+    { name: 'Needle Pike',    diff: 'HARD',      shape: 'pike',    col: '#a7f070', fin: '#2f6a4c', acc: '#f4f4f4', speed: 96,  erratic: 0.78, dart: 0.82, bar: 24, fill: 0.26, drain: 0.38, weight: 6,  wait: [2.0, 4.0] },
+    { name: 'Amber Koi',      diff: 'RARE',      shape: 'koi',     col: '#ef7d57', fin: '#ffcd75', acc: '#f4f4f4', speed: 88,  erratic: 0.96, dart: 0.90, bar: 22, fill: 0.24, drain: 0.40, weight: 3,  wait: [2.2, 4.4] },
+    { name: 'Nightfin',       diff: 'LEGENDARY', shape: 'legend',  col: '#d08cff', fin: '#73eff7', acc: '#ffcd75', speed: 110, erratic: 1.20, dart: 1.00, bar: 18, fill: 0.22, drain: 0.44, weight: 2,  wait: [2.4, 5.0] }
+  ];
+
+  const TRACK = { x: 284, y: 20, w: 22, h: 140 };
+  const METER = { x: 308, y: 20, w: 6, h: 140 };
+
+  const state = {
+    phase: 'title',
+    t: 0,
+    phaseT: 0,
+    held: false,
+    fish: null,
+    fishI: 0,
+    fishY: 70,
+    fishVel: 0,
+    fishTarget: 70,
+    fishTimer: 0,
+    barY: 50,
+    barVel: 0,
+    barH: 36,
+    progress: 0.22,
+    bobber: { x: 176, y: 102, vx: 0, vy: 0 },
+    castFrom: { x: 86, y: 86 },
+    waitLeft: 0,
+    biteLeft: 0,
+    nibbleT: 0,
+    resultNew: false,
+    caught: 0,
+    missed: 0,
+    discovered: new Set(),
+    counts: Array(FISH.length).fill(0),
+    logOpen: false,
+    logFrom: 'idle',
+    dog: 'sit',
+    dogT: 0,
+    msg: '',
+    msgT: 0,
+    shake: 0,
+    splash: 0,
+    particles: [],
+    clouds: [
+      { x: 18, y: 14, w: 28, s: 4.2 },
+      { x: 90, y: 22, w: 22, s: 3.1 },
+      { x: 210, y: 12, w: 34, s: 5.0 }
+    ],
+    ambientJump: 8,
+    jumpX: 220,
+    jumpY: 90,
+    jumpT: -1
+  };
+
+  let audio;
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+  const ir = (n) => Math.round(n);
+
+  function fit() {
+    const s = Math.max(1, Math.floor(Math.min(window.innerWidth / W, window.innerHeight / H)));
+    canvas.style.width = (W * s) + 'px';
+    canvas.style.height = (H * s) + 'px';
+  }
+  window.addEventListener('resize', fit);
+  fit();
+
+  function px(x, y, w, h, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(ir(x), ir(y), Math.max(1, ir(w)), Math.max(1, ir(h)));
+  }
+
+  function text(s, x, y, color, size, align) {
+    ctx.fillStyle = color;
+    ctx.font = `${size || 8}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    ctx.textAlign = align || 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(s, ir(x), ir(y));
+  }
+
+  function ensureAudio() {
+    if (audio) return audio;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    audio = new AC();
+    return audio;
+  }
+
+  function tone(freq, dur, type, vol, slide) {
+    const ac = ensureAudio();
+    if (!ac) return;
+    if (ac.state === 'suspended') ac.resume();
+    const o = ac.createOscillator();
+    const g = ac.createGain();
+    o.type = type || 'square';
+    o.frequency.setValueAtTime(freq, ac.currentTime);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, slide), ac.currentTime + dur);
+    g.gain.setValueAtTime(vol || 0.06, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
+    o.connect(g); g.connect(ac.destination);
+    o.start(); o.stop(ac.currentTime + dur);
+  }
+
+  const sfx = {
+    cast() { tone(240, 0.12, 'square', 0.05, 140); },
+    splash() { tone(180, 0.08, 'triangle', 0.06, 90); tone(120, 0.14, 'sawtooth', 0.03, 60); },
+    nibble() { tone(320, 0.05, 'square', 0.04); },
+    bite() { tone(880, 0.09, 'square', 0.07); tone(1320, 0.12, 'square', 0.04); },
+    hook() { tone(520, 0.08, 'square', 0.06, 700); },
+    catch() { tone(392, 0.12, 'square', 0.06); setTimeout(() => tone(523, 0.12, 'square', 0.06), 90); setTimeout(() => tone(659, 0.18, 'square', 0.07), 180); },
+    fail() { tone(220, 0.18, 'square', 0.05, 90); },
+    bark() { tone(420, 0.07, 'square', 0.05, 280); setTimeout(() => tone(360, 0.08, 'square', 0.04, 220), 70); },
+    ui() { tone(640, 0.05, 'square', 0.03); }
+  };
+
+  function burst(x, y, n, cols, spread, life) {
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, Math.PI * 2);
+      const sp = rand(8, spread);
+      state.particles.push({
+        x, y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - rand(4, 18),
+        life: rand(life * 0.5, life),
+        max: life,
+        color: cols[i % cols.length],
+        s: Math.random() < 0.5 ? 1 : 2
+      });
+    }
+  }
+
+  function pickFish() {
+    const total = FISH.reduce((n, f) => n + f.weight, 0);
+    let r = Math.random() * total;
+    for (let i = 0; i < FISH.length; i++) {
+      r -= FISH[i].weight;
+      if (r <= 0) return i;
+    }
+    return 0;
+  }
+
+  function setDog(mood, dur) {
+    state.dog = mood;
+    state.dogT = dur;
+  }
+
+  function say(msg, dur) {
+    state.msg = msg;
+    state.msgT = dur;
+  }
+
+  function startIdle() {
+    state.phase = 'idle';
+    state.phaseT = 0;
+    state.fish = null;
+    setDog('sit', 0);
+    say('Cast into the pond.', 99);
+  }
+
+  function beginCast() {
+    state.phase = 'cast';
+    state.phaseT = 0;
+    const i = pickFish();
+    state.fishI = i;
+    state.fish = FISH[i];
+    const reach = rand(150, 210);
+    state.bobber.x = 90;
+    state.bobber.y = 86;
+    state.bobber.vx = (reach - 90) / 0.42;
+    state.bobber.vy = -90;
+    setDog('look', 1.2);
+    sfx.cast();
+    say('Casting...', 1);
+  }
+
+  function beginWait() {
+    state.phase = 'wait';
+    state.phaseT = 0;
+    state.bobber.y = 104;
+    state.waitLeft = rand(state.fish.wait[0], state.fish.wait[1]);
+    state.nibbleT = rand(0.4, state.waitLeft * 0.55);
+    state.splash = 1;
+    burst(state.bobber.x, state.bobber.y, 10, [C.foam, C.cyan, C.white], 40, 0.45);
+    sfx.splash();
+    setDog('look', 99);
+    say('Wait for the bite...', 99);
+  }
+
+  function beginBite() {
+    state.phase = 'bite';
+    state.phaseT = 0;
+    state.biteLeft = rand(0.85, 1.25);
+    state.shake = 2.2;
+    state.splash = 1;
+    burst(state.bobber.x, state.bobber.y, 14, [C.foam, C.white, C.gold], 55, 0.5);
+    sfx.bite();
+    setDog('bark', 0.8);
+    sfx.bark();
+    say('NOW! Hook it!', 1.2);
+  }
+
+  function beginReel() {
+    const f = state.fish;
+    state.phase = 'reel';
+    state.phaseT = 0;
+    state.barH = f.bar;
+    state.barY = TRACK.h * 0.45 - f.bar * 0.5;
+    state.barVel = 0;
+    state.fishY = TRACK.h * 0.5;
+    state.fishTarget = state.fishY;
+    state.fishVel = 0;
+    state.fishTimer = 0.1;
+    state.progress = 0.24;
+    sfx.hook();
+    setDog('alert', 99);
+    say(f.name.toUpperCase() + '  ·  ' + f.diff, 99);
+  }
+
+  function succeed() {
+    const i = state.fishI;
+    state.resultNew = !state.discovered.has(i);
+    state.discovered.add(i);
+    state.counts[i]++;
+    state.caught++;
+    state.phase = 'catch';
+    state.phaseT = 0;
+    state.shake = 2.8;
+    burst(160, 90, 22, [state.fish.col, state.fish.acc, C.gold, C.white], 70, 0.7);
+    sfx.catch();
+    setDog('happy', 2.4);
+    say(state.resultNew ? 'NEW catch!' : 'Caught!', 2);
+  }
+
+  function fail(reason) {
+    state.phase = 'fail';
+    state.phaseT = 0;
+    state.missed++;
+    sfx.fail();
+    setDog('sad', 2.2);
+    say(reason || 'It got away...', 2.4);
+  }
+
+  function toggleLog() {
+    if (state.phase === 'reel' || state.phase === 'cast' || state.phase === 'wait' || state.phase === 'bite') return;
+    if (state.phase === 'log') {
+      state.phase = state.logFrom;
+      state.phaseT = 0;
+    } else {
+      state.logFrom = state.phase;
+      state.phase = 'log';
+      state.phaseT = 0;
+      sfx.ui();
+    }
+  }
+
+  function tap() {
+    ensureAudio();
+    if (state.phase === 'title') {
+      startIdle();
+      sfx.ui();
+      return;
+    }
+    if (state.phase === 'log') {
+      toggleLog();
+      return;
+    }
+    if (state.phase === 'idle') {
+      beginCast();
+      return;
+    }
+    if (state.phase === 'wait') {
+      say('Patience... wait for !', 1.1);
+      return;
+    }
+    if (state.phase === 'bite') {
+      beginReel();
+      return;
+    }
+    if (state.phase === 'catch' || state.phase === 'fail') {
+      if (state.phaseT > 0.35) startIdle();
+    }
+  }
+
+  function updateFishAI(dt) {
+    const f = state.fish;
+    state.fishTimer -= dt;
+    if (state.fishTimer <= 0) {
+      const e = f.erratic;
+      const dart = Math.random() < f.dart;
+      if (dart) {
+        const mag = rand(28, 78) * (0.55 + e);
+        state.fishTarget = clamp(state.fishY + (Math.random() < 0.5 ? -mag : mag), 10, TRACK.h - 10);
+        state.fishVel = f.speed * rand(1.4, 2.4);
+        state.fishTimer = rand(0.10, 0.28) * (1.15 - Math.min(e, 1));
+      } else {
+        let target = state.fishY + rand(-36, 36) * (0.35 + e);
+        if (f.sink) target += rand(10, 40);
+        if (f.shape === 'legend' && Math.random() < 0.35) target = rand(10, TRACK.h - 10);
+        state.fishTarget = clamp(target, 10, TRACK.h - 10);
+        state.fishVel = f.speed * rand(0.35, 0.85);
+        state.fishTimer = rand(0.35, 1.15) * (1.25 - Math.min(e, 1) * 0.6);
+      }
+    }
+    const dir = Math.sign(state.fishTarget - state.fishY);
+    const step = state.fishVel * dt;
+    if (Math.abs(state.fishTarget - state.fishY) <= step) state.fishY = state.fishTarget;
+    else state.fishY += dir * step;
+    if (f.shape === 'legend') state.fishY += Math.sin(state.t * 17) * 18 * dt;
+    if (f.shape === 'whisker') state.fishY += Math.sin(state.t * 3.2) * 10 * dt;
+    state.fishY = clamp(state.fishY, 8, TRACK.h - 8);
+  }
+
+  function update(dt) {
+    state.t += dt;
+    state.phaseT += dt;
+    if (state.dogT > 0) {
+      state.dogT -= dt;
+      if (state.dogT <= 0 && state.dog !== 'look') state.dog = 'sit';
+    }
+    if (state.msgT > 0) state.msgT -= dt;
+    state.shake *= Math.pow(0.04, dt);
+    if (state.shake < 0.05) state.shake = 0;
+    state.splash = Math.max(0, state.splash - dt * 2.4);
+
+    for (const c of state.clouds) {
+      c.x += c.s * dt;
+      if (c.x > 340) c.x = -c.w - 10;
+    }
+
+    state.ambientJump -= dt;
+    if (state.jumpT >= 0) {
+      state.jumpT += dt;
+      if (state.jumpT > 0.55) state.jumpT = -1;
+    } else if (state.ambientJump <= 0) {
+      state.ambientJump = rand(6, 14);
+      state.jumpX = rand(130, 250);
+      state.jumpY = rand(86, 118);
+      state.jumpT = 0;
+    }
+
+    for (let i = state.particles.length - 1; i >= 0; i--) {
+      const p = state.particles[i];
+      p.life -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 80 * dt;
+      if (p.life <= 0) state.particles.splice(i, 1);
+    }
+
+    if (state.phase === 'cast') {
+      state.bobber.vy += 420 * dt;
+      state.bobber.x += state.bobber.vx * dt;
+      state.bobber.y += state.bobber.vy * dt;
+      if (state.phaseT > 0.42 || state.bobber.y >= 104) beginWait();
+    }
+
+    if (state.phase === 'wait') {
+      state.waitLeft -= dt;
+      state.nibbleT -= dt;
+      state.bobber.y = 104 + Math.sin(state.t * 3.4) * 1.4;
+      if (state.nibbleT <= 0 && state.waitLeft > 0.45) {
+        state.bobber.y += 5;
+        sfx.nibble();
+        burst(state.bobber.x, 108, 4, [C.foam, C.white], 22, 0.28);
+        state.nibbleT = rand(0.55, 1.15);
+        setDog('alert', 0.4);
+      }
+      if (state.waitLeft <= 0) beginBite();
+    }
+
+    if (state.phase === 'bite') {
+      state.biteLeft -= dt;
+      state.bobber.y = 108 + Math.sin(state.t * 28) * 3;
+      if (state.biteLeft <= 0) fail('Too slow — it swam off.');
+    }
+
+    if (state.phase === 'reel') {
+      updateFishAI(dt);
+      const lift = 2100;
+      const grav = 980;
+      if (state.held) state.barVel -= lift * dt;
+      state.barVel += grav * dt;
+      state.barY += state.barVel * dt;
+      const maxY = TRACK.h - state.barH;
+      if (state.barY < 0) {
+        state.barY = 0;
+        state.barVel = Math.abs(state.barVel) * 0.42;
+      } else if (state.barY > maxY) {
+        state.barY = maxY;
+        state.barVel = -Math.abs(state.barVel) * 0.42;
+      }
+      const inBar = state.fishY >= state.barY && state.fishY <= state.barY + state.barH;
+      if (inBar) state.progress += state.fish.fill * dt;
+      else state.progress -= state.fish.drain * dt;
+      state.progress = clamp(state.progress, 0, 1);
+      if (state.progress >= 1) succeed();
+      else if (state.progress <= 0) fail('The line snapped.');
+    }
+  }
+
+  function drawSky() {
+    px(0, 0, W, 38, C.sky1);
+    px(0, 38, W, 22, C.sky2);
+    px(0, 60, W, 16, C.sky3);
+    px(248, 10, 16, 16, C.gold);
+    px(252, 6, 8, 4, C.gold);
+    px(244, 14, 4, 8, C.gold);
+    px(264, 14, 4, 8, C.gold);
+    px(252, 26, 8, 4, C.gold);
+    for (const c of state.clouds) {
+      px(c.x, c.y + 4, c.w, 5, C.cloud);
+      px(c.x + 6, c.y, c.w * 0.62, 5, C.cloud);
+      px(c.x + 12, c.y + 3, c.w * 0.5, 4, C.white);
+    }
+  }
+
+  function tree(x, y, s, dark) {
+    const trunk = dark ? C.dirt2 : C.dock;
+    const a = dark ? C.tree : C.tree2;
+    const b = dark ? C.hill : C.hill2;
+    px(x + 5 * s, y + 14 * s, 4 * s, 16 * s, trunk);
+    px(x + 1 * s, y + 8 * s, 12 * s, 8 * s, a);
+    px(x, y + 4 * s, 14 * s, 7 * s, b);
+    px(x + 3 * s, y, 8 * s, 7 * s, a);
+    px(x + 5 * s, y - 3 * s, 5 * s, 5 * s, b);
+  }
+
+  function drawHills() {
+    px(0, 62, W, 18, C.hill);
+    for (let i = 0; i < 7; i++) tree(i * 46 - 8, 46 + (i % 3) * 5, 0.85, i % 2);
+    px(0, 76, W, 6, C.hill2);
+    px(198, 58, 22, 16, C.dirt2);
+    px(202, 50, 14, 10, C.wine);
+    px(206, 44, 6, 6, C.dock3);
+    px(204, 46, 10, 3, C.gold);
+    px(218, 62, 3, 12, C.dock);
+  }
+
+  function drawWater() {
+    px(0, 80, W, 100, C.water);
+    px(0, 80, W, 3, C.water2);
+    const t = state.t;
+    for (let i = 0; i < 9; i++) {
+      const y = 86 + i * 10;
+      const x = ((t * (8 + i * 2) + i * 40) % 360) - 20;
+      px(x, y, 18, 1, C.foam);
+      px(x + 40, y + 3, 11, 1, C.water3);
+      px(x + 90, y + 1, 15, 1, C.cyan);
+    }
+    px(142, 92, 11, 3, C.green);
+    px(145, 90, 7, 2, C.lime);
+    px(146, 93, 2, 2, C.pine);
+    px(188, 100, 13, 3, C.green);
+    px(191, 98, 8, 2, C.lime);
+    px(230, 88, 10, 3, C.pine);
+    px(232, 86, 6, 2, C.green);
+    px(210, 124, 12, 3, C.green);
+    px(213, 122, 7, 2, C.lime);
+    for (let i = 0; i < 5; i++) {
+      const x = 248 + i * 14;
+      px(x, 82, 2, 18 + (i % 3) * 6, C.pine);
+      px(x - 2, 80, 6, 3, C.green);
+      px(x + 1, 78, 5, 3, C.lime);
+    }
+    if (state.jumpT >= 0) {
+      const k = state.jumpT;
+      const jy = state.jumpY - Math.sin(Math.min(1, k / 0.45) * Math.PI) * 10;
+      px(state.jumpX, jy, 6, 3, C.silver);
+      px(state.jumpX + 6, jy + 1, 3, 2, C.slate);
+      if (k > 0.35) px(state.jumpX - 2, state.jumpY + 2, 10, 1, C.foam);
+    }
+  }
+
+  function drawShore() {
+    px(0, 108, 118, 72, C.dirt);
+    px(0, 118, 128, 62, C.dirt2);
+    px(0, 104, 102, 5, C.grass2);
+    px(0, 108, 114, 5, C.grass);
+    px(100, 108, 22, 4, C.grass2);
+    px(118, 112, 18, 4, C.grass);
+    px(132, 116, 16, 4, C.grass2);
+    px(146, 122, 22, 3, C.grass);
+    px(12, 98, 3, 8, C.pine);
+    px(8, 96, 8, 3, C.green);
+    px(14, 94, 6, 3, C.lime);
+    px(44, 100, 3, 7, C.pine);
+    px(40, 98, 7, 3, C.green);
+    px(6, 112, 2, 2, C.gold);
+    px(28, 114, 2, 2, C.gold);
+    px(70, 122, 3, 2, C.silver);
+    px(90, 128, 4, 2, C.slate);
+    px(18, 132, 5, 2, C.dock2);
+  }
+
+  function drawDock() {
+    px(20, 112, 92, 18, C.dock);
+    px(20, 112, 92, 2, C.dock2);
+    for (let i = 0; i < 6; i++) px(22 + i * 16, 114, 14, 2, C.dock3);
+    px(24, 128, 6, 22, C.dock3);
+    px(92, 128, 6, 26, C.dock3);
+    px(24, 136, 6, 2, C.water3);
+    px(92, 140, 6, 2, C.water3);
+    px(36, 116, 1, 1, C.gold);
+    px(68, 118, 1, 1, C.gold);
+    px(88, 116, 1, 1, C.gold);
+  }
+
+  function drawPlayer(x, y, pose) {
+    const bob = pose === 'reel' ? Math.round(Math.sin(state.t * 10) * 1) : 0;
+    y += bob;
+    const lean = pose === 'cast' ? 3 : pose === 'reel' ? -1 : 0;
+    x += lean;
+    px(x + 3, y - 22, 8, 3, C.hat2);
+    px(x + 2, y - 20, 10, 4, C.hat);
+    px(x + 1, y - 18, 12, 2, C.hat2);
+    px(x + 4, y - 16, 6, 6, C.skin);
+    px(x + 5, y - 14, 2, 2, C.void);
+    px(x + 8, y - 14, 1, 1, C.void);
+    px(x + 4, y - 10, 6, 2, C.skin);
+    px(x + 2, y - 8, 10, 8, C.shirt);
+    px(x + 1, y - 6, 3, 3, C.skin);
+    px(x + 12, y - 7, 3, 3, C.skin);
+    px(x + 3, y, 4, 7, C.pants);
+    px(x + 8, y, 4, 7, C.pants);
+    px(x + 3, y + 7, 4, 3, C.boot);
+    px(x + 8, y + 7, 4, 3, C.boot);
+    let tipX = x + 18, tipY = y - 16;
+    if (pose === 'cast') { tipX = x + 22; tipY = y - 26; }
+    if (pose === 'reel') { tipX = x + 20; tipY = y - 20; }
+    px(x + 13, y - 7, 6, 2, C.dock2);
+    ctx.strokeStyle = C.dock2;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 14, y - 6);
+    ctx.lineTo(tipX, tipY);
+    ctx.stroke();
+    state.castFrom.x = tipX;
+    state.castFrom.y = tipY;
+  }
+
+  function drawDog(x, y) {
+    const mood = state.dog;
+    const wag = Math.round(Math.sin(state.t * (mood === 'happy' ? 16 : 7)) * (mood === 'happy' ? 2 : 1));
+    const hop = mood === 'happy' ? Math.abs(Math.round(Math.sin(state.t * 10) * 2)) : 0;
+    const drop = mood === 'sad' ? 1 : 0;
+    y -= hop;
+    y += drop;
+    const body = '#c9894a';
+    const dark = '#7a5532';
+    const ear = mood === 'sad' ? y + 2 : y;
+    px(x + 2, ear - 8, 3, 4, dark);
+    px(x + 9, ear - 8, 3, 4, dark);
+    px(x + 2, y - 6, 10, 7, body);
+    px(x + 3, y - 4, 3, 3, C.white);
+    px(x + 10, y - 4, 4, 3, body);
+    px(x + 12, y - 3, 2, 2, C.void);
+    if (mood === 'bark') px(x + 13, y - 2, 3, 2, C.wine);
+    else px(x + 13, y - 2, 2, 2, C.void);
+    px(x + 1, y + 1, 12, 6, body);
+    px(x + 2, y + 7, 3, 3, dark);
+    px(x + 8, y + 7, 3, 3, dark);
+    px(x + 2, y + 9, 3, 2, C.white);
+    px(x + 8, y + 9, 3, 2, C.white);
+    px(x - 2 + wag, y + 2, 4, 3, dark);
+    if (mood === 'bark' && (state.t * 8 | 0) % 2 === 0) {
+      text('!', x + 16, y - 14, C.gold, 10);
+    }
+    if (mood === 'happy') {
+      px(x + 5, y - 2, 2, 1, C.wine);
+      px(x + 8, y - 2, 2, 1, C.wine);
+    }
+  }
+
+  function drawFishSprite(x, y, f, s, flip, t) {
+    const wig = Math.round(Math.sin((t || 0) * 10) * s * 0.25);
+    ctx.save();
+    ctx.translate(ir(x), ir(y) + wig);
+    ctx.scale(flip || 1, 1);
+    const S = s;
+    const col = f.col, fin = f.fin, acc = f.acc;
+    if (f.shape === 'small') {
+      px(-6 * S, -2 * S, 3 * S, 4 * S, fin);
+      px(-4 * S, -3 * S, 8 * S, 6 * S, col);
+      px(3 * S, -1 * S, 2 * S, 2 * S, acc);
+      px(2 * S, -2 * S, S, S, C.void);
+      px(-1 * S, 3 * S, 3 * S, 2 * S, fin);
+    } else if (f.shape === 'round') {
+      px(-7 * S, -2 * S, 3 * S, 5 * S, fin);
+      px(-5 * S, -4 * S, 10 * S, 8 * S, col);
+      px(-2 * S, -2 * S, 3 * S, 3 * S, acc);
+      px(3 * S, -2 * S, S, S, C.void);
+      px(-1 * S, 4 * S, 4 * S, 2 * S, fin);
+    } else if (f.shape === 'stripe') {
+      px(-8 * S, -2 * S, 3 * S, 5 * S, fin);
+      px(-6 * S, -3 * S, 12 * S, 6 * S, col);
+      px(-2 * S, -3 * S, 2 * S, 6 * S, fin);
+      px(2 * S, -3 * S, 2 * S, 6 * S, fin);
+      px(4 * S, -2 * S, S, S, C.void);
+      px(-1 * S, 3 * S, 4 * S, 2 * S, fin);
+    } else if (f.shape === 'long') {
+      px(-10 * S, -2 * S, 4 * S, 4 * S, fin);
+      px(-7 * S, -3 * S, 14 * S, 6 * S, col);
+      px(2 * S, -2 * S, 3 * S, 2 * S, acc);
+      px(5 * S, -2 * S, S, S, C.void);
+      px(-2 * S, 3 * S, 5 * S, 2 * S, fin);
+    } else if (f.shape === 'whisker') {
+      px(-8 * S, -2 * S, 3 * S, 5 * S, fin);
+      px(-6 * S, -4 * S, 11 * S, 8 * S, col);
+      px(5 * S, 0, 5 * S, 1, acc);
+      px(5 * S, 2 * S, 4 * S, 1, acc);
+      px(3 * S, -2 * S, S, S, C.void);
+      px(-2 * S, 4 * S, 4 * S, 2 * S, fin);
+    } else if (f.shape === 'pike') {
+      px(-12 * S, -1 * S, 5 * S, 3 * S, fin);
+      px(-8 * S, -2 * S, 16 * S, 4 * S, col);
+      px(6 * S, -1 * S, 3 * S, 2 * S, acc);
+      px(7 * S, -2 * S, S, S, C.void);
+      px(-1 * S, 2 * S, 4 * S, 2 * S, fin);
+    } else if (f.shape === 'koi') {
+      px(-7 * S, -2 * S, 3 * S, 5 * S, fin);
+      px(-5 * S, -4 * S, 11 * S, 8 * S, col);
+      px(-2 * S, -1 * S, 3 * S, 3 * S, acc);
+      px(2 * S, 1 * S, 2 * S, 2 * S, C.gold);
+      px(4 * S, -2 * S, S, S, C.void);
+      px(0, 4 * S, 4 * S, 2 * S, fin);
+    } else {
+      px(-11 * S, -2 * S, 4 * S, 5 * S, fin);
+      px(-8 * S, -4 * S, 14 * S, 8 * S, col);
+      px(-2 * S, -2 * S, 4 * S, 3 * S, acc);
+      px(3 * S, -5 * S, 2 * S, 2 * S, C.gold);
+      px(4 * S, -2 * S, S, S, C.white);
+      px(-1 * S, 4 * S, 5 * S, 2 * S, fin);
+    }
+    ctx.restore();
+  }
+
+  function drawLineAndBobber() {
+    const fishing = state.phase === 'cast' || state.phase === 'wait' || state.phase === 'bite' || state.phase === 'reel';
+    if (!fishing) return;
+    const bx = state.bobber.x;
+    const by = state.bobber.y;
+    ctx.strokeStyle = C.line;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(state.castFrom.x, state.castFrom.y);
+    const mx = (state.castFrom.x + bx) * 0.5 + (state.phase === 'cast' ? 0 : Math.sin(state.t * 2) * 2);
+    const my = Math.min(state.castFrom.y, by) + Math.abs(bx - state.castFrom.x) * 0.12;
+    ctx.quadraticCurveTo(mx, my, bx, by);
+    ctx.stroke();
+    if (state.phase !== 'cast') {
+      px(bx - 2, by - 3, 4, 3, C.wine);
+      px(bx - 1, by - 5, 2, 2, C.white);
+      px(bx - 2, by, 4, 2, C.white);
+      if (state.splash > 0) {
+        px(bx - 6, by + 2, 12, 1, C.foam);
+        px(bx - 4, by, 2, 2, C.cyan);
+        px(bx + 3, by, 2, 2, C.cyan);
+      }
+    } else {
+      px(bx - 1, by - 1, 3, 3, C.wine);
+    }
+    if (state.phase === 'bite') {
+      const flash = (state.t * 10 | 0) % 2 === 0;
+      px(bx - 4, by - 22, 10, 14, flash ? C.gold : C.white);
+      px(bx - 2, by - 20, 6, 8, C.void);
+      px(bx, by - 10, 2, 2, C.void);
+      text('!', bx - 1, by - 20, flash ? C.gold : C.white, 10);
+    }
+  }
+
+  function drawParticles() {
+    for (const p of state.particles) {
+      const a = p.life / p.max;
+      if (a < 0.3 && (state.t * 20 | 0) % 2 === 0) continue;
+      px(p.x, p.y, p.s, p.s, p.color);
+    }
+  }
+
+  function panel(x, y, w, h, fill, edge) {
+    px(x, y, w, h, edge || C.wood);
+    px(x + 1, y + 1, w - 2, h - 2, fill || C.void);
+  }
+
+  function drawHUD() {
+    panel(4, 4, 118, 22, C.navy, C.slate);
+    text('WILLOW POND', 8, 6, C.gold, 8);
+    text('CATCH ' + state.caught, 8, 15, C.silver, 8);
+    panel(198, 4, 78, 22, C.navy, C.slate);
+    text('LOG ' + state.discovered.size + '/' + FISH.length, 204, 6, C.lime, 8);
+    text('MISS ' + state.missed, 204, 15, C.peach, 8);
+
+    if (state.phase !== 'title' && state.phase !== 'log') {
+      const hint = state.phase === 'idle' ? 'SPACE  CAST     L  LOG'
+        : state.phase === 'wait' ? 'WAIT FOR  !'
+        : state.phase === 'bite' ? 'SPACE  HOOK'
+        : state.phase === 'reel' ? 'HOLD SPACE TO REEL'
+        : 'SPACE  CONTINUE';
+      panel(4, 164, 220, 12, C.navy, C.slate);
+      text(hint, 8, 166, C.white, 8);
+    }
+
+    if (state.msg && state.msgT > 0 && state.phase !== 'reel' && state.phase !== 'log') {
+      text(state.msg, 160, 34, C.gold, 8, 'center');
+    }
+  }
+
+  function drawReel() {
+    const f = state.fish;
+    const x = TRACK.x, y = TRACK.y, w = TRACK.w, h = TRACK.h;
+    px(x - 3, y - 3, w + 6, h + 6, C.wood);
+    px(x - 1, y - 1, w + 2, h + 2, C.dock3);
+    px(x, y, w, h, C.track);
+    for (let i = 0; i < 7; i++) px(x + 1, y + 4 + i * 20, w - 2, 1, '#1c3326');
+
+    const by = y + state.barY;
+    px(x + 1, by, w - 2, state.barH, C.bar3);
+    px(x + 2, by + 1, w - 4, state.barH - 2, C.bar2);
+    px(x + 3, by + 2, w - 6, Math.max(2, state.barH - 8), C.bar);
+    px(x + 4, by + 3, w - 10, 2, C.white);
+
+    drawFishSprite(x + w / 2, y + state.fishY, f, 1, 1, state.t);
+
+    const mx = METER.x, my = METER.y, mw = METER.w, mh = METER.h;
+    px(mx - 1, my - 1, mw + 2, mh + 2, C.wood);
+    px(mx, my, mw, mh, C.void);
+    const fillH = Math.round(mh * state.progress);
+    const col = state.progress > 0.66 ? C.lime : state.progress > 0.33 ? C.gold : C.wine;
+    px(mx, my + mh - fillH, mw, fillH, col);
+    px(mx, my + mh - fillH, mw, 1, C.white);
+
+    panel(8, 30, 118, 28, C.navy, C.slate);
+    text(f.name.toUpperCase(), 12, 33, C.gold, 8);
+    text(f.diff, 12, 44, f.diff === 'LEGENDARY' ? C.cyan : f.diff === 'RARE' ? C.peach : C.silver, 8);
+    const inBar = state.fishY >= state.barY && state.fishY <= state.barY + state.barH;
+    text(inBar ? 'ON FISH' : 'LOSING', 70, 44, inBar ? C.lime : C.wine, 8);
+  }
+
+  function drawCatch() {
+    const f = state.fish;
+    panel(50, 28, 220, 118, C.navy, C.gold);
+    px(52, 30, 216, 114, C.void);
+    if (state.resultNew) {
+      px(58, 36, 36, 10, C.wine);
+      text('NEW', 64, 37, C.gold, 8);
+    }
+    text('YOU CAUGHT', 160, 38, C.silver, 8, 'center');
+    drawFishSprite(160, 78, f, 3, 1, state.t);
+    text(f.name.toUpperCase(), 160, 100, C.gold, 10, 'center');
+    text(f.diff, 160, 112, f.diff === 'LEGENDARY' ? C.cyan : C.peach, 8, 'center');
+    text('Pip wags wildly.', 160, 126, C.silver, 8, 'center');
+  }
+
+  function drawFail() {
+    panel(60, 48, 200, 72, C.navy, C.wine);
+    text('GOT AWAY', 160, 58, C.peach, 10, 'center');
+    text(state.msg || 'The water goes still.', 160, 76, C.silver, 8, 'center');
+    text('SPACE TO TRY AGAIN', 160, 100, C.gold, 8, 'center');
+  }
+
+  function drawLog() {
+    panel(18, 16, 284, 148, C.navy, C.gold);
+    px(20, 18, 280, 144, C.void);
+    text('COLLECTION LOG', 28, 22, C.gold, 8);
+    text(state.discovered.size + ' / ' + FISH.length + ' SPECIES', 190, 22, C.lime, 8);
+    for (let i = 0; i < FISH.length; i++) {
+      const col = i % 2;
+      const row = (i / 2) | 0;
+      const x = 28 + col * 136;
+      const y = 38 + row * 30;
+      const known = state.discovered.has(i);
+      const f = FISH[i];
+      px(x, y, 128, 26, C.steel);
+      px(x + 1, y + 1, 126, 24, C.navy);
+      if (known) {
+        drawFishSprite(x + 16, y + 13, f, 1.2, 1, state.t);
+        text(f.name, x + 30, y + 5, C.white, 8);
+        text(f.diff + '  x' + state.counts[i], x + 30, y + 14, f.diff === 'LEGENDARY' ? C.cyan : C.silver, 8);
+      } else {
+        ctx.globalAlpha = 0.35;
+        drawFishSprite(x + 16, y + 13, f, 1.2, 1, 0);
+        ctx.globalAlpha = 1;
+        text('???', x + 30, y + 5, C.slate, 8);
+        text(f.diff, x + 30, y + 14, C.steel, 8);
+      }
+    }
+  }
+
+  function drawTitle() {
+    panel(54, 28, 212, 92, C.navy, C.gold);
+    text('WILLOW POND', 160, 40, C.gold, 14, 'center');
+    text('A pixel fishing tale', 160, 58, C.silver, 8, 'center');
+    text('SPACE TO CAST', 160, 78, (state.t * 2 | 0) % 2 ? C.white : C.gold, 8, 'center');
+    text('HOLD TO REEL    L FOR LOG', 160, 96, C.slate, 8, 'center');
+  }
+
+  function poseForPhase() {
+    if (state.phase === 'cast') return 'cast';
+    if (state.phase === 'reel' || state.phase === 'bite' || state.phase === 'wait') return 'reel';
+    return 'idle';
+  }
+
+  function draw() {
+    ctx.imageSmoothingEnabled = false;
+    ctx.save();
+    if (state.shake > 0) {
+      ctx.translate((Math.random() - 0.5) * state.shake * 2, (Math.random() - 0.5) * state.shake * 2);
+    }
+    drawSky();
+    drawHills();
+    drawWater();
+    drawShore();
+    drawDock();
+    drawDog(28, 118);
+    drawPlayer(70, 108, poseForPhase());
+    drawLineAndBobber();
+    drawParticles();
+    if (state.phase === 'reel') drawReel();
+    if (state.phase === 'catch') drawCatch();
+    if (state.phase === 'fail') drawFail();
+    if (state.phase === 'log') drawLog();
+    if (state.phase === 'title') drawTitle();
+    if (state.phase !== 'title') drawHUD();
+    ctx.restore();
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+      e.preventDefault();
+      if (!e.repeat) {
+        state.held = true;
+        tap();
+      } else {
+        state.held = true;
+      }
+    }
+    if (e.key === 'l' || e.key === 'L') {
+      e.preventDefault();
+      toggleLog();
+    }
+    if (e.key === 'Escape' && state.phase === 'log') toggleLog();
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.code === 'Space' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') state.held = false;
+  });
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    canvas.focus();
+    state.held = true;
+    tap();
+  });
+  window.addEventListener('pointerup', () => { state.held = false; });
+  window.addEventListener('blur', () => { state.held = false; });
+
+  let last = performance.now();
+  function loop(now) {
+    const dt = clamp((now - last) / 1000, 0, 0.05);
+    last = now;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+  canvas.focus();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

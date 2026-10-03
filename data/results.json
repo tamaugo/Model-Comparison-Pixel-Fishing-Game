@@ -1,0 +1,73 @@
+{
+  "run_date": "2026-10-03",
+  "provider": "OpenCode Go (all six ran at the same time)",
+  "tested": [
+    {
+      "id": "luna-6-high",
+      "name": "Luna 6 High",
+      "file": "games/6-Luna-medium.html",
+      "game_title": "Moonwake",
+      "minutes": 2,
+      "scores": { "creativity": 11, "design": 4, "enjoyability": 7, "feature": 7 },
+      "cost_usd": 0.0074,
+      "requests": 10
+    },
+    {
+      "id": "grok-4-6-high",
+      "name": "Grok 4.6 High",
+      "file": "games/Grok-4_6-high.html",
+      "game_title": "Willow Pond",
+      "minutes": 5,
+      "scores": { "creativity": 13, "design": 7, "enjoyability": 6, "feature": 7 },
+      "cost_usd": 0.3923,
+      "requests": 7
+    },
+    {
+      "id": "minimax-m3-thinking",
+      "name": "MiniMax M3 Thinking",
+      "file": "games/MiniMax-M3-Thinking.html",
+      "game_title": "Pixel Fishing",
+      "minutes": 7,
+      "scores": { "creativity": 0, "design": 5, "enjoyability": 0, "feature": 0 },
+      "cost_usd": 0.0642,
+      "requests": 4
+    },
+    {
+      "id": "longcat-preview-2-5",
+      "name": "LongCat Preview 2.5",
+      "file": "games/Longcar-2_5.html",
+      "game_title": "Longcar-2.5 Pixel Pond Fishing",
+      "minutes": 21,
+      "scores": { "creativity": 8, "design": 8, "enjoyability": 3, "feature": 7 },
+      "cost_usd": 0,
+      "cost_note": "free tier",
+      "requests": 23
+    },
+    {
+      "id": "glm-5-3-high",
+      "name": "GLM 5.3 High",
+      "file": "games/GLM-5_3-high.html",
+      "game_title": "GONE FISHIN'",
+      "minutes": 27,
+      "scores": { "creativity": 0, "design": 0, "enjoyability": 0, "feature": 0 },
+      "cost_usd": 1.0851,
+      "requests": 23
+    },
+    {
+      "id": "grok-4-7-high",
+      "name": "Grok 4.7 High",
+      "file": "games/Grok_-4_7-high.html",
+      "game_title": "Stillwater",
+      "minutes": 38,
+      "minutes_note": "looped for 32 minutes, was steered, ran 6 more, then hit the 5 hour usage cap",
+      "scores": { "creativity": 19, "design": 18, "enjoyability": 14, "feature": 22 },
+      "cost_usd": 1.2175,
+      "requests": 8
+    }
+  ],
+  "references": [
+    { "name": "Fable 5.1", "tier": "frontier", "minutes": 9, "cost_usd": 4.5, "estimated": true },
+    { "name": "GPT Astra", "tier": "frontier", "minutes": 12, "cost_usd": 3.2, "estimated": true },
+    { "name": "Gemini 2.5 Pro", "tier": "lower", "minutes": 6, "cost_usd": 0.45, "estimated": true }
+  ]
+}

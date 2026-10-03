@@ -1,0 +1,1726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stillwater</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #100e14;
+    color: #f4e8c8;
+    font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    background: #100e14;
+    box-shadow: 0 0 0 4px #2a2018, 0 0 0 7px #c4a060, 0 18px 40px rgba(0, 0, 0, 0.45);
+    touch-action: none;
+    cursor: crosshair;
+  }
+  #help {
+    margin: 10px 16px 0;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    text-align: center;
+    color: #d9cbb0;
+    max-width: 760px;
+    line-height: 1.45;
+  }
+  #help b { color: #f0c040; font-weight: 600; }
+</style>
+</head>
+<body>
+<canvas id="c" width="320" height="180"></canvas>
+<p id="help"><b>Space</b> or <b>click the water</b> to cast. When the bobber dips, hook it. <b>Hold</b> Space or the mouse to keep the green bar on the fish. <b>1 / 2 / 3</b> pick bait. <b>M</b> mutes.</p>
+<script>
+(function () {
+  "use strict";
+
+  const W = 320;
+  const H = 180;
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d");
+  canvas.width = W;
+  canvas.height = H;
+  ctx.imageSmoothingEnabled = false;
+
+  const COL = {
+    sky0: "#3e74ae",
+    sky1: "#5b94c6",
+    sky2: "#8ebad8",
+    sky3: "#d7c7a4",
+    sun: "#f6e38a",
+    sunHi: "#fff6c8",
+    cloud: "#f4f7f8",
+    hill: "#3e6d4c",
+    hillDk: "#2c5238",
+    treeDk: "#1b4428",
+    tree: "#2a6a38",
+    treeHi: "#3e8a48",
+    trunk: "#6b4428",
+    trunkHi: "#8a5c38",
+    roof: "#8a3830",
+    wall: "#a06840",
+    door: "#4a2818",
+    window: "#c8e8f0",
+    water0: "#143858",
+    water1: "#184872",
+    water2: "#1c5c8c",
+    water3: "#18608a",
+    wave: "#4aa0d0",
+    waveDk: "#102848",
+    foam: "#d4eef6",
+    grass0: "#3a8a36",
+    grass1: "#2e742c",
+    grass2: "#266428",
+    grassHi: "#62b054",
+    dirt: "#6b4a2e",
+    dock: "#a06a3c",
+    dockLt: "#c08850",
+    dockDk: "#5c3a20",
+    skin: "#f0c0a0",
+    shirt: "#2f7a88",
+    shirtLt: "#3e94a4",
+    shirtDk: "#1e5868",
+    pants: "#4a3828",
+    pantsDk: "#3a2c1c",
+    hat: "#e0b050",
+    hatLt: "#f0cc70",
+    hatDk: "#b88830",
+    band: "#8a3830",
+    boot: "#2c2218",
+    hair: "#6b4030",
+    dog: "#d08040",
+    dogLt: "#e8a060",
+    dogDk: "#8a4e22",
+    cream: "#f4d8b0",
+    nose: "#2a1a10",
+    collar: "#c44a3a",
+    gold: "#f0c040",
+    ui: "#1a1424",
+    uiEdge: "#4a3c5c",
+    uiInk: "#f4e8c8",
+    dim: "#a89880",
+    white: "#f8f4ec",
+    black: "#141018",
+    red: "#d0453a",
+    green: "#62c454",
+    greenLt: "#d4f0b0",
+    greenDk: "#2a7a32",
+    line: "#e8f4f8",
+    ink: "#141018"
+  };
+
+  const FONT = {
+    A: [2, 5, 7, 5, 5], B: [6, 5, 6, 5, 6], C: [3, 4, 4, 4, 3], D: [6, 5, 5, 5, 6],
+    E: [7, 4, 6, 4, 7], F: [7, 4, 6, 4, 4], G: [3, 4, 5, 5, 3], H: [5, 5, 7, 5, 5],
+    I: [7, 2, 2, 2, 7], J: [1, 1, 1, 5, 2], K: [5, 6, 4, 6, 5], L: [4, 4, 4, 4, 7],
+    M: [5, 7, 7, 5, 5], N: [6, 5, 5, 5, 5], O: [2, 5, 5, 5, 2], P: [6, 5, 6, 4, 4],
+    Q: [2, 5, 5, 3, 1], R: [6, 5, 6, 5, 5], S: [3, 4, 2, 1, 6], T: [7, 2, 2, 2, 2],
+    U: [5, 5, 5, 5, 7], V: [5, 5, 5, 2, 2], W: [5, 5, 7, 7, 5], X: [5, 5, 2, 5, 5],
+    Y: [5, 5, 2, 2, 2], Z: [7, 1, 2, 4, 7],
+    0: [7, 5, 5, 5, 7], 1: [2, 6, 2, 2, 7], 2: [6, 1, 2, 4, 7], 3: [7, 1, 3, 1, 7],
+    4: [5, 5, 7, 1, 1], 5: [7, 4, 6, 1, 6], 6: [3, 4, 6, 5, 3], 7: [7, 1, 2, 2, 2],
+    8: [7, 5, 7, 5, 7], 9: [3, 5, 3, 1, 6],
+    " ": [0, 0, 0, 0, 0], "!": [2, 2, 2, 0, 2], ".": [0, 0, 0, 0, 2],
+    "?": [6, 1, 2, 0, 2], "-": [0, 0, 7, 0, 0], "'": [2, 2, 0, 0, 0],
+    "+": [0, 2, 7, 2, 0], ":": [0, 2, 0, 2, 0], "*": [5, 2, 5, 2, 0]
+  };
+
+  function normSprite(rows) {
+    const w = Math.max.apply(null, rows.map(function (r) { return r.length; }));
+    return rows.map(function (r) {
+      return r.length >= w ? r : r + ".".repeat(w - r.length);
+    });
+  }
+
+  const EYE = "#f8f6ee";
+
+  const FISH = [
+    {
+      id: "bluegill", name: "BLUEGILL", short: "BLUEGILL", tier: "easy", diff: "EASY", rare: "COMMON",
+      motion: "GLIDES", pattern: "smooth", points: 10,
+      maxSpeed: 0.32, accel: 1.15, pause: [0.25, 0.5], move: [0.9, 1.4],
+      range: [0.28, 0.74], step: 0.16, jitter: 0, bob: 2.2, bobAmp: 0.03,
+      catchRate: 0.22, escapeRate: 0.10, hook: 1.2,
+      icon: "#3d9a62", accent: "#163828",
+      pal: { o: "#163828", b: "#3d9a62", l: "#62c484", s: "#142018", e: EYE, t: "#1a3050" },
+      sprite: normSprite([
+        ".....oooo.......",
+        "...oobbbbboo....",
+        "..obbbbbbbbbbo..",
+        ".obbbbebbbbooott",
+        "..obbbbbbbbbbo..",
+        "...oobbbbboo....",
+        ".....oooo......."
+      ])
+    },
+    {
+      id: "sunfish", name: "SUNFISH", short: "SUNFISH", tier: "easy", diff: "EASY", rare: "COMMON",
+      motion: "FLOATS", pattern: "floater", points: 12,
+      maxSpeed: 0.30, accel: 1.05, pause: [0.3, 0.6], move: [0.8, 1.3],
+      range: [0.58, 0.94], step: 0.14, jitter: 0, bob: 2.6, bobAmp: 0.035,
+      catchRate: 0.21, escapeRate: 0.11, hook: 1.15,
+      icon: "#f0a030", accent: "#a04818",
+      pal: { o: "#8a3818", b: "#f0b040", l: "#ffe080", s: "#3a8a58", e: EYE, t: "#c06020" },
+      sprite: normSprite([
+        ".....oooo.......",
+        "...ooblllboo....",
+        "..obbbbbbbbbbo..",
+        ".obbbsbebbbooott",
+        "..obbbbbbbbbbo..",
+        "...ooblllboo....",
+        ".....oooo......."
+      ])
+    },
+    {
+      id: "carp", name: "CARP", short: "CARP", tier: "easy", diff: "EASY", rare: "COMMON",
+      motion: "SINKS", pattern: "sinker", points: 18,
+      maxSpeed: 0.36, accel: 1.2, pause: [0.35, 0.7], move: [0.7, 1.2],
+      range: [0.08, 0.42], step: 0.16, jitter: 0, bob: 1.6, bobAmp: 0.02,
+      catchRate: 0.20, escapeRate: 0.12, hook: 1.12,
+      icon: "#c48840", accent: "#6a4018",
+      pal: { o: "#5a3414", b: "#c48840", l: "#e0b060", s: "#8a5828", e: EYE, t: "#4a3018", w: "#f0d8b0" },
+      sprite: normSprite([
+        "................",
+        "..oooooooooooo..",
+        ".obbbbbbbbbbbbo.",
+        "wobbbbebbbbbbbot",
+        ".obbbbbbbbbbbbo.",
+        "..ooooooooooow..",
+        ".....ww........."
+      ])
+    },
+    {
+      id: "perch", name: "PERCH", short: "PERCH", tier: "medium", diff: "MEDIUM", rare: "UNCOMMON",
+      motion: "WANDERS", pattern: "mixed", points: 25,
+      maxSpeed: 0.72, accel: 2.4, pause: [0.22, 0.48], move: [0.4, 0.8],
+      range: [0.12, 0.88], step: 0.34, jitter: 0.15, bob: 3, bobAmp: 0.02,
+      catchRate: 0.17, escapeRate: 0.20, hook: 1.0,
+      icon: "#e0c040", accent: "#2a5828",
+      pal: { o: "#2a5828", b: "#e0c040", s: "#2a4a20", e: EYE, t: "#1e401c", l: "#f0e080" },
+      sprite: normSprite([
+        "...oooooooooo...",
+        "..obsbsbsbsbbo..",
+        ".obsbsbebsbsbbot",
+        "..obsbsbsbsbbo..",
+        "...oooooooooo...",
+        "......tt........",
+        "................"
+      ])
+    },
+    {
+      id: "bass", name: "BASS", short: "BASS", tier: "medium", diff: "MEDIUM", rare: "UNCOMMON",
+      motion: "DARTS", pattern: "dart", points: 35,
+      maxSpeed: 1.35, accel: 7.5, pause: [0.45, 0.85], move: [0.16, 0.34],
+      range: [0.06, 0.94], step: 0.7, jitter: 0, bob: 1.4, bobAmp: 0.012,
+      catchRate: 0.16, escapeRate: 0.24, hook: 0.95,
+      icon: "#3a8a40", accent: "#1e4a28",
+      pal: { o: "#1e4a28", b: "#3a8a40", l: "#68b058", s: "#163820", e: EYE, t: "#142818" },
+      sprite: normSprite([
+        "...oooooooo.....",
+        "..obbbbbbbbbbo..",
+        ".obbbbebbbbbbbot",
+        "..obbbbbbbbbbo..",
+        "...oooooooo.....",
+        "....oooo........",
+        "................"
+      ])
+    },
+    {
+      id: "trout", name: "RAINBOW TROUT", short: "TROUT", tier: "medium", diff: "MEDIUM", rare: "UNCOMMON",
+      motion: "CRUISES", pattern: "cruise", points: 40,
+      maxSpeed: 0.85, accel: 2.8, pause: [0.12, 0.28], move: [0.7, 1.15],
+      range: [0.1, 0.9], step: 0.38, jitter: 0.05, bob: 3.4, bobAmp: 0.02,
+      catchRate: 0.16, escapeRate: 0.23, hook: 0.95,
+      icon: "#7a9850", accent: "#e08098",
+      pal: { o: "#3a5028", b: "#7a9850", l: "#a8c070", p: "#e08098", s: "#2a3818", e: EYE, t: "#304020" },
+      sprite: normSprite([
+        "..oooooooooooo..",
+        ".obbbbpbbbbbbbo.",
+        "obbbpbebpbbsbbot",
+        ".obbbbpbbbbbbbo.",
+        "..oooooooooooo..",
+        "....ss....ss....",
+        "................"
+      ])
+    },
+    {
+      id: "catfish", name: "CATFISH", short: "CATFISH", tier: "hard", diff: "HARD", rare: "RARE",
+      motion: "SINKS", pattern: "sinker", points: 55,
+      maxSpeed: 1.15, accel: 5.5, pause: [0.4, 0.75], move: [0.28, 0.5],
+      range: [0.04, 0.9], step: 0.55, jitter: 0.08, bob: 1.2, bobAmp: 0.015,
+      catchRate: 0.15, escapeRate: 0.32, hook: 0.82,
+      icon: "#8a8078", accent: "#3a342c",
+      pal: { o: "#3a342c", b: "#8a8078", l: "#b0a498", e: EYE, t: "#2a241c", w: "#f0e8d8" },
+      sprite: normSprite([
+        "w...............",
+        ".ooooooooooooo..",
+        "obbbbbbbbbbbbbot",
+        "obbbbebbbbbbbbot",
+        "obbbbbbbbbbbbbot",
+        ".ooooooooooooo..",
+        "w..............."
+      ])
+    },
+    {
+      id: "pike", name: "PIKE", short: "PIKE", tier: "hard", diff: "HARD", rare: "RARE",
+      motion: "DARTS", pattern: "dart", points: 70,
+      maxSpeed: 1.8, accel: 9.5, pause: [0.28, 0.52], move: [0.14, 0.3],
+      range: [0.04, 0.96], step: 0.85, jitter: 0, bob: 1.1, bobAmp: 0.01,
+      catchRate: 0.145, escapeRate: 0.36, hook: 0.78,
+      icon: "#5a9840", accent: "#1a3818",
+      pal: { o: "#1a3818", b: "#3a6828", l: "#6aaa48", s: "#d8e090", e: EYE, t: "#142810", n: "#f0e8c8" },
+      sprite: normSprite([
+        "................",
+        ".ooooooooooooo..",
+        "obsbsbebsbsbbbnn",
+        ".ooooooooooooo..",
+        "................",
+        "................",
+        "................"
+      ])
+    },
+    {
+      id: "sturgeon", name: "STURGEON", short: "STURGEON", tier: "hard", diff: "HARD", rare: "RARE",
+      motion: "SWEEPS", pattern: "sweep", points: 90,
+      maxSpeed: 0.92, accel: 2.2, pause: [0.32, 0.55], move: [0.85, 1.25],
+      range: [0.05, 0.95], step: 0.9, jitter: 0, bob: 1.5, bobAmp: 0.012,
+      catchRate: 0.15, escapeRate: 0.33, hook: 0.8,
+      icon: "#8a9098", accent: "#4a5058",
+      pal: { o: "#4a5058", b: "#9aa0a8", l: "#c8ccd0", s: "#5a6068", e: EYE, t: "#3a4048" },
+      sprite: normSprite([
+        "..ssssssssssss..",
+        ".oblbblbblbbbbo.",
+        "obbbsbebbbbbbbot",
+        ".oblbblbblbbbbo.",
+        "..oooooooooooo..",
+        "....ssssss......",
+        "................"
+      ])
+    },
+    {
+      id: "koi", name: "GOLDEN KOI", short: "KOI", tier: "legendary", diff: "LEGENDARY", rare: "LEGENDARY",
+      motion: "ERRATIC", pattern: "erratic", points: 200,
+      maxSpeed: 1.95, accel: 8.5, pause: [0.05, 0.16], move: [0.12, 0.28],
+      range: [0.04, 0.96], step: 0.95, jitter: 1.6, bob: 6, bobAmp: 0.02,
+      catchRate: 0.135, escapeRate: 0.42, hook: 0.7,
+      icon: "#f0c040", accent: "#d04030",
+      pal: { o: "#a07820", b: "#f0c040", l: "#ffe080", s: "#d04030", e: EYE, t: "#fff0b0" },
+      sprite: normSprite([
+        "....ooooooo.....",
+        "..ooblbblbbbo...",
+        ".obbbbbebbbsbbtt",
+        "..oobsbbbbbbott.",
+        "....ooooooo.tt..",
+        "......tttt......",
+        "................"
+      ])
+    }
+  ];
+
+  const BAITS = [
+    { id: "worms", name: "WORMS", hint: "FAST BITES, SMALL FISH", bite: [1.35, 3.1], weights: { easy: 8, medium: 2.2, hard: 0.7, legendary: 0.12 }, color: "#e07060" },
+    { id: "spinner", name: "SPINNER", hint: "BASS, TROUT, PIKE", bite: [2.2, 4.6], weights: { easy: 1.4, medium: 6, hard: 3.6, legendary: 0.35 }, color: "#d0d6dc" },
+    { id: "lure", name: "GOLD LURE", hint: "RARE FISH, SLOW WAIT", bite: [3.4, 6.4], weights: { easy: 0.8, medium: 2.4, hard: 5.2, legendary: 1.7 }, color: "#f0c040" }
+  ];
+
+  const TUNE = {
+    zoneH: 0.27,
+    grav: 3.55,
+    lift: 7.7,
+    maxV: 2.1,
+    drag: 0.85,
+    bounce: 0.32,
+    grace: 0.42,
+    startProgress: 0.32
+  };
+
+  const LAYOUT = {
+    playerX: 98,
+    playerY: 146,
+    dogX: 54,
+    dogY: 154
+  };
+
+  let audioCtx = null;
+  let muted = false;
+  function ac() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+  function tone(freq, dur, type, vol, delay, endFreq) {
+    if (muted) return;
+    try {
+      const c = ac();
+      const t = c.currentTime + (delay || 0);
+      const o = c.createOscillator();
+      const g = c.createGain();
+      o.type = type || "square";
+      o.frequency.setValueAtTime(Math.max(40, freq), t);
+      if (endFreq) o.frequency.exponentialRampToValueAtTime(Math.max(40, endFreq), t + dur);
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g);
+      g.connect(c.destination);
+      o.start(t);
+      o.stop(t + dur + 0.02);
+    } catch (err) { /* ignore */ }
+  }
+  function noise(dur, vol, freq) {
+    if (muted) return;
+    try {
+      const c = ac();
+      const n = Math.max(1, Math.floor(c.sampleRate * dur));
+      const buf = c.createBuffer(1, n, c.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / n);
+      const src = c.createBufferSource();
+      src.buffer = buf;
+      const filter = c.createBiquadFilter();
+      filter.type = "bandpass";
+      filter.frequency.value = freq || 700;
+      const g = c.createGain();
+      g.gain.value = vol;
+      src.connect(filter);
+      filter.connect(g);
+      g.connect(c.destination);
+      src.start();
+    } catch (err) { /* ignore */ }
+  }
+  function sfxCast() { noise(0.09, 0.12, 500); tone(340, 0.1, "square", 0.04, 0, 140); }
+  function sfxLand() { tone(180, 0.07, "square", 0.05); noise(0.05, 0.06, 300); }
+  function sfxNibble() { tone(740, 0.04, "square", 0.025); }
+  function sfxBite(legendary) {
+    tone(880, 0.08, "square", 0.06);
+    tone(1180, 0.1, "square", 0.05, 0.08);
+    if (legendary) tone(1480, 0.14, "square", 0.04, 0.16);
+    noise(0.06, 0.08, 900);
+  }
+  function sfxHook() { tone(520, 0.06, "square", 0.05); }
+  function sfxTick() { tone(660, 0.03, "square", 0.018); }
+  function sfxCatch(legendary) {
+    const notes = legendary ? [523, 659, 784, 1046, 1318] : [523, 659, 784, 1046];
+    notes.forEach(function (f, i) { tone(f, 0.12, "square", 0.05, i * 0.07); });
+  }
+  function sfxFail() { tone(320, 0.28, "triangle", 0.06, 0, 80); }
+  function sfxBlip() { tone(680, 0.05, "square", 0.04); }
+  function sfxBark() { noise(0.05, 0.1, 280); tone(190, 0.06, "square", 0.04); }
+
+  const keys = {};
+  let mouseDown = false;
+  let hits = [];
+
+  function rand(a, b) { return a + Math.random() * (b - a); }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function tierColor(tier) {
+    if (tier === "easy") return "#70d090";
+    if (tier === "medium") return "#e0a030";
+    if (tier === "hard") return "#e06040";
+    return "#ffe060";
+  }
+
+  let state = "title";
+  let time = 0;
+  let baitIndex = 0;
+  let lockedBait = 0;
+  let score = 0;
+  let shownScore = 0;
+  let catches = 0;
+  let tutorial = true;
+  let current = null;
+  let failKind = "lost";
+  let maxProgress = 0;
+  let toast = "";
+  let toastT = 0;
+  let shake = 0;
+  let castT = 0;
+  let castFrom = { x: 0, y: 0 };
+  let castTo = { x: 176, y: 90 };
+  let waitT = 0;
+  let biteAt = 2;
+  let fakes = [];
+  let fakeFired = 0;
+  let nibbleDip = 0;
+  let biteWindow = 0;
+  let biteMax = 1;
+  let notYetT = 0;
+  let zone = 0.4;
+  let zoneVel = 0;
+  let fishPos = 0.5;
+  let fishVel = 0;
+  let fishTarget = 0.5;
+  let fishMode = "pause";
+  let fishTimer = 0;
+  let progress = 0.32;
+  let mgTime = 0;
+  let grace = 0;
+  let tickCd = 0;
+  let animT = 0;
+  let playerPose = "idle";
+  let dogPose = "sit";
+  let dogLock = 0;
+  let hand = { x: 110, y: 118 };
+  let rodTip = { x: 124, y: 104 };
+  let particles = [];
+  let floaters = [];
+  let fishTrail = [];
+  let smokeT = 0;
+  let barkT = 0;
+
+  const scenery = { shore: [], tufts: [], flowers: [], clouds: [] };
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0;
+      a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  function initScenery() {
+    const rng = mulberry32(11);
+    for (let x = 0; x < W; x++) scenery.shore.push(126 + Math.floor(rng() * 4));
+    for (let i = 0; i < 70; i++) {
+      scenery.tufts.push({
+        x: Math.floor(rng() * W),
+        y: 132 + Math.floor(rng() * 32),
+        h: 2 + Math.floor(rng() * 3),
+        c: rng() < 0.5 ? COL.grassHi : COL.grass0
+      });
+    }
+    const flowerCols = ["#e07098", "#f0e080", "#f4f4f4", "#e07098", "#f0c040"];
+    for (let i = 0; i < 14; i++) {
+      scenery.flowers.push({
+        x: 4 + Math.floor(rng() * 70),
+        y: 136 + Math.floor(rng() * 22),
+        c: flowerCols[i % flowerCols.length]
+      });
+    }
+    scenery.flowers.push({ x: 214, y: 150, c: "#e07098" });
+    scenery.flowers.push({ x: 230, y: 156, c: "#f0e080" });
+    scenery.flowers.push({ x: 248, y: 148, c: "#f4f4f4" });
+    scenery.clouds = [
+      { x: 18, y: 8, w: 1, spd: 6 },
+      { x: 150, y: 16, w: 1, spd: 4 },
+      { x: 250, y: 6, w: 2, spd: 5 }
+    ];
+  }
+
+  function burst(x, y, n, color, speed) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = (speed || 28) * (0.4 + Math.random());
+      particles.push({
+        x: x, y: y,
+        vx: Math.cos(a) * s,
+        vy: Math.sin(a) * s * 0.6 - 18,
+        life: 0.35 + Math.random() * 0.35,
+        max: 0.7,
+        color: color,
+        g: 46,
+        size: Math.random() < 0.3 ? 2 : 1
+      });
+    }
+  }
+
+  function floater(text, x, y, color) {
+    floaters.push({ text: text, x: x, y: y, life: 0.9, max: 0.9, color: color || COL.gold });
+  }
+
+  function addShake(n) { shake = Math.max(shake, n); }
+
+  function pickFish(baitIdx) {
+    const bait = BAITS[baitIdx];
+    let total = 0;
+    const weights = FISH.map(function (f) {
+      const w = bait.weights[f.tier];
+      total += w;
+      return w;
+    });
+    let r = Math.random() * total;
+    for (let i = 0; i < FISH.length; i++) {
+      r -= weights[i];
+      if (r <= 0) return FISH[i];
+    }
+    return FISH[0];
+  }
+
+  function chooseTarget(species, pos) {
+    const lo = species.range[0];
+    const hi = species.range[1];
+    if (species.pattern === "floater") {
+      if (Math.random() < 0.18) return rand(0.35, 0.55);
+      return rand(Math.max(lo, 0.6), hi);
+    }
+    if (species.pattern === "sinker") {
+      if (Math.random() < (species.tier === "hard" ? 0.34 : 0.16)) return rand(0.55, 0.88);
+      return rand(lo, Math.min(hi, 0.4));
+    }
+    if (species.pattern === "sweep") {
+      return pos > 0.5 ? rand(0.05, 0.18) : rand(0.82, 0.96);
+    }
+    if (species.pattern === "dart" || species.pattern === "erratic") {
+      let t = rand(lo, hi);
+      if (Math.abs(t - pos) < 0.28) t = pos > 0.5 ? rand(lo, 0.32) : rand(0.68, hi);
+      return clamp(t, 0.04, 0.96);
+    }
+    if (species.pattern === "mixed") {
+      return clamp(pos + rand(-species.step, species.step), lo, hi);
+    }
+    return clamp(pos + rand(-species.step, species.step), lo, hi);
+  }
+
+  function defaultCast() {
+    return { x: Math.round(164 + Math.random() * 40), y: Math.round(82 + Math.random() * 16) };
+  }
+
+  function aimCast(p) {
+    if (p.y > 122 || p.x < 128 || p.x > 240) return defaultCast();
+    return {
+      x: Math.round(clamp(p.x, 140, 228)),
+      y: Math.round(clamp(p.y, 70, 112))
+    };
+  }
+
+  function setBait(i) {
+    if (state !== "idle" && state !== "title" && state !== "caught" && state !== "lost") return;
+    if (i === baitIndex) return;
+    baitIndex = i;
+    toast = BAITS[i].name + " - " + BAITS[i].hint;
+    toastT = 2;
+    sfxBlip();
+  }
+
+  function activeBait() {
+    if (state === "casting" || state === "waiting" || state === "biting" || state === "minigame" || state === "hauling" || state === "fleeing") {
+      return lockedBait;
+    }
+    return baitIndex;
+  }
+
+  function resetPoses() {
+    playerPose = "idle";
+    if (dogLock <= 0) dogPose = "sit";
+  }
+
+  function startCast(target) {
+    if (state !== "idle") return;
+    state = "casting";
+    castTo = target;
+    castFrom = { x: rodTip.x, y: rodTip.y };
+    castT = 0;
+    lockedBait = baitIndex;
+    playerPose = "cast";
+    dogPose = "alert";
+    nibbleDip = 0;
+    sfxCast();
+  }
+
+  function landCast() {
+    state = "waiting";
+    waitT = 0;
+    fakeFired = 0;
+    const b = BAITS[lockedBait];
+    biteAt = rand(b.bite[0], b.bite[1]);
+    fakes = [];
+    const n = Math.random() < 0.55 ? 1 : (Math.random() < 0.35 ? 2 : 0);
+    for (let i = 0; i < n; i++) {
+      const t = rand(0.55, Math.max(0.7, biteAt - 0.55));
+      fakes.push(t);
+    }
+    fakes.sort(function (a, b) { return a - b; });
+    playerPose = "hold";
+    dogPose = "alert";
+    burst(castTo.x, castTo.y, 7, COL.foam, 22);
+    sfxLand();
+  }
+
+  function beginBite() {
+    current = tutorial ? FISH[0] : pickFish(lockedBait);
+    state = "biting";
+    biteMax = current.hook;
+    biteWindow = biteMax;
+    nibbleDip = 5;
+    playerPose = "hold";
+    dogPose = "bark";
+    barkT = 0.45;
+    addShake(current.tier === "legendary" ? 2.2 : 1.4);
+    burst(castTo.x, castTo.y, current.tier === "legendary" ? 14 : 9, current.tier === "legendary" ? COL.gold : COL.foam, 32);
+    sfxBite(current.tier === "legendary");
+    sfxBark();
+  }
+
+  function tooEarly() {
+    notYetT = 0.7;
+    floater("NOT YET", castTo.x - 14, castTo.y - 18, COL.uiInk);
+    sfxNibble();
+  }
+
+  function hookFish() {
+    state = "minigame";
+    zone = 0.38;
+    zoneVel = 0;
+    fishPos = current.pattern === "floater" ? rand(0.62, 0.8) : current.pattern === "sinker" ? rand(0.18, 0.36) : rand(0.4, 0.65);
+    fishVel = 0;
+    fishTarget = fishPos;
+    fishMode = "pause";
+    fishTimer = 0.28;
+    progress = TUNE.startProgress;
+    maxProgress = progress;
+    mgTime = 0;
+    grace = TUNE.grace;
+    tickCd = 0;
+    fishTrail = [];
+    playerPose = "reel";
+    dogPose = "watch";
+    sfxHook();
+  }
+
+  function startHaul() {
+    state = "hauling";
+    animT = 0;
+    tutorial = false;
+    score += current.points;
+    catches += 1;
+    playerPose = "cheer";
+    dogPose = "happy";
+    dogLock = 2.4;
+    addShake(current.tier === "legendary" ? 2.4 : 1.6);
+    sfxCatch(current.tier === "legendary");
+    sfxBark();
+  }
+
+  function startFlee(kind) {
+    failKind = kind;
+    state = "fleeing";
+    animT = 0;
+    if (kind === "lost") tutorial = false;
+    playerPose = "sad";
+    dogPose = "sad";
+    dogLock = 1.8;
+    sfxFail();
+  }
+
+  function finishHaul() {
+    state = "caught";
+    burst(hand.x, hand.y, 10, current.accent, 24);
+    if (current.tier === "legendary") burst(hand.x, hand.y - 8, 16, COL.gold, 36);
+  }
+
+  function finishFlee() {
+    state = "lost";
+    burst(castTo.x + 8, castTo.y, 8, COL.foam, 26);
+  }
+
+  function doPrimary() {
+    try { ac(); } catch (err) { /* ignore */ }
+    if (state === "title") { state = "idle"; return; }
+    if (state === "idle") { startCast(defaultCast()); return; }
+    if (state === "waiting") { tooEarly(); return; }
+    if (state === "biting") { hookFish(); return; }
+    if (state === "caught" || state === "lost") {
+      state = "idle";
+      resetPoses();
+    }
+  }
+
+  function canvasPos(e) {
+    const r = canvas.getBoundingClientRect();
+    const x = (e.clientX - r.left) * (W / r.width);
+    const y = (e.clientY - r.top) * (H / r.height);
+    if (x < 0 || y < 0 || x >= W || y >= H) return null;
+    return { x: x, y: y };
+  }
+
+  function onPointer(e) {
+    const p = canvasPos(e);
+    if (!p) return;
+    try { ac(); } catch (err) { /* ignore */ }
+    if (state === "title") { state = "idle"; return; }
+    if (state === "caught" || state === "lost") { state = "idle"; resetPoses(); return; }
+    if (state === "biting") { hookFish(); return; }
+    if (state === "waiting") { tooEarly(); return; }
+    if (state === "idle") {
+      for (let i = hits.length - 1; i >= 0; i--) {
+        const h = hits[i];
+        if (p.x >= h.x && p.x < h.x + h.w && p.y >= h.y && p.y < h.y + h.h) {
+          h.fn();
+          return;
+        }
+      }
+      startCast(aimCast(p));
+    }
+  }
+
+  window.addEventListener("keydown", function (e) {
+    if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].indexOf(e.code) !== -1) e.preventDefault();
+    if (e.repeat) return;
+    keys[e.code] = true;
+    if (e.code === "Digit1") setBait(0);
+    else if (e.code === "Digit2") setBait(1);
+    else if (e.code === "Digit3") setBait(2);
+    else if (e.code === "KeyM") { muted = !muted; sfxBlip(); }
+    else if (e.code === "Space" || e.code === "Enter") doPrimary();
+  });
+  window.addEventListener("keyup", function (e) { keys[e.code] = false; });
+  window.addEventListener("mousedown", function (e) {
+    mouseDown = true;
+    if (e.button === 0) onPointer(e);
+  });
+  window.addEventListener("mouseup", function () { mouseDown = false; });
+  window.addEventListener("blur", function () {
+    mouseDown = false;
+    Object.keys(keys).forEach(function (k) { keys[k] = false; });
+  });
+  canvas.addEventListener("touchstart", function (e) {
+    e.preventDefault();
+    mouseDown = true;
+    onPointer(e.changedTouches[0]);
+  }, { passive: false });
+  canvas.addEventListener("touchend", function (e) {
+    e.preventDefault();
+    mouseDown = false;
+  }, { passive: false });
+  canvas.addEventListener("touchmove", function (e) { e.preventDefault(); }, { passive: false });
+
+  function holding() {
+    return !!(keys.Space || keys.ArrowUp || keys.KeyW || mouseDown);
+  }
+
+  function updateFish(dt, species) {
+    fishTimer -= dt;
+    if (fishTimer <= 0) {
+      if (fishMode === "pause") {
+        fishMode = "move";
+        fishTimer = rand(species.move[0], species.move[1]);
+        fishTarget = chooseTarget(species, fishPos);
+      } else {
+        fishMode = "pause";
+        fishTimer = rand(species.pause[0], species.pause[1]);
+      }
+    }
+    if (fishMode === "move") {
+      const dir = Math.sign(fishTarget - fishPos) || (Math.random() < 0.5 ? -1 : 1);
+      fishVel += dir * species.accel * dt;
+    } else {
+      fishVel *= Math.exp(-4.5 * dt);
+      fishPos += Math.sin(mgTime * species.bob) * species.bobAmp * dt;
+    }
+    const cap = fishMode === "move" ? species.maxSpeed : species.maxSpeed * 0.12;
+    fishVel = clamp(fishVel, -cap, cap);
+    fishPos += fishVel * dt;
+    if (species.jitter) fishPos += (Math.random() - 0.5) * species.jitter * dt;
+    if (fishPos < 0.04) { fishPos = 0.04; fishVel = Math.abs(fishVel) * 0.45; fishTarget = Math.max(fishTarget, 0.3); }
+    if (fishPos > 0.96) { fishPos = 0.96; fishVel = -Math.abs(fishVel) * 0.45; fishTarget = Math.min(fishTarget, 0.7); }
+  }
+
+  function updateZone(dt, hold) {
+    const acc = (hold ? TUNE.lift : 0) - TUNE.grav;
+    zoneVel += acc * dt;
+    zoneVel *= Math.exp(-TUNE.drag * dt);
+    zoneVel = clamp(zoneVel, -TUNE.maxV, TUNE.maxV);
+    zone += zoneVel * dt;
+    const half = TUNE.zoneH / 2;
+    if (zone < half) {
+      zone = half;
+      if (zoneVel < 0) zoneVel = -zoneVel * TUNE.bounce;
+    } else if (zone > 1 - half) {
+      zone = 1 - half;
+      if (zoneVel > 0) zoneVel = -zoneVel * TUNE.bounce;
+    }
+  }
+
+  function fishInZone() {
+    return Math.abs(fishPos - zone) <= TUNE.zoneH / 2 + 0.028;
+  }
+
+  function update(dt) {
+    time += dt;
+    if (shake > 0) shake = Math.max(0, shake - dt * 7);
+    if (toastT > 0) toastT -= dt;
+    if (notYetT > 0) notYetT -= dt;
+    if (nibbleDip > 0 && state !== "biting") nibbleDip = Math.max(0, nibbleDip - dt * 7);
+    if (dogLock > 0) {
+      dogLock -= dt;
+      if (dogLock <= 0 && state === "idle") dogPose = "sit";
+    }
+    if (barkT > 0) barkT -= dt;
+    shownScore += (score - shownScore) * Math.min(1, dt * 7);
+
+    smokeT -= dt;
+    if (smokeT <= 0) {
+      smokeT = 0.38;
+      particles.push({
+        x: 206, y: 36, vx: 3 + Math.random() * 2, vy: -7,
+        life: 1.1, max: 1.1, color: "#e4e8ea", g: -1, size: 1
+      });
+    }
+
+    particles.forEach(function (p) {
+      p.vy += (p.g || 0) * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+    });
+    particles = particles.filter(function (p) { return p.life > 0; });
+    if (particles.length > 90) particles.splice(0, particles.length - 90);
+    floaters.forEach(function (f) {
+      f.y -= 10 * dt;
+      f.life -= dt;
+    });
+    floaters = floaters.filter(function (f) { return f.life > 0; });
+
+    if (state === "casting") {
+      castT += dt / 0.52;
+      if (castT >= 1) {
+        castT = 1;
+        landCast();
+      }
+    } else if (state === "waiting") {
+      waitT += dt;
+      while (fakeFired < fakes.length && waitT >= fakes[fakeFired]) {
+        fakeFired++;
+        nibbleDip = 2.2;
+        burst(castTo.x, castTo.y, 3, COL.foam, 12);
+        sfxNibble();
+        dogPose = "alert";
+      }
+      if (waitT >= biteAt) beginBite();
+    } else if (state === "biting") {
+      biteWindow -= dt;
+      nibbleDip = 4 + Math.sin(time * 36) * 1.2;
+      if (biteWindow <= 0) startFlee("slow");
+    } else if (state === "minigame") {
+      mgTime += dt;
+      const hold = holding();
+      updateZone(dt, hold);
+      if (grace > 0) {
+        grace -= dt;
+        fishVel *= Math.exp(-3 * dt);
+      } else {
+        updateFish(dt, current);
+      }
+      fishTrail.push(fishPos);
+      if (fishTrail.length > 5) fishTrail.shift();
+      const inside = fishInZone();
+      if (grace <= 0) {
+        if (inside) progress += current.catchRate * dt;
+        else progress -= current.escapeRate * dt;
+      }
+      progress = clamp(progress, 0, 1);
+      if (progress > maxProgress) maxProgress = progress;
+      if (inside && grace <= 0) {
+        tickCd -= dt;
+        if (tickCd <= 0) { sfxTick(); tickCd = 0.16; }
+      }
+      if (progress >= 1) startHaul();
+      else if (progress <= 0 && grace <= 0) startFlee("lost");
+      else if (progress > 0.82) dogPose = "happy";
+      else if (progress < 0.16) dogPose = "sad";
+      else dogPose = inside ? "alert" : "watch";
+    } else if (state === "hauling") {
+      animT += dt;
+      if (animT >= 0.48) finishHaul();
+    } else if (state === "fleeing") {
+      animT += dt;
+      if (animT >= 0.4) finishFlee();
+    }
+  }
+
+  function rect(x, y, w, h, c) {
+    ctx.fillStyle = c;
+    ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+  }
+  function pix(x, y, c) { rect(x, y, 1, 1, c); }
+
+  function line(x0, y0, x1, y1, color) {
+    x0 = Math.round(x0); y0 = Math.round(y0);
+    x1 = Math.round(x1); y1 = Math.round(y1);
+    const dx = Math.abs(x1 - x0);
+    const dy = Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1;
+    const sy = y0 < y1 ? 1 : -1;
+    let err = dx - dy;
+    ctx.fillStyle = color;
+    for (let n = 0; n < 240; n++) {
+      ctx.fillRect(x0, y0, 1, 1);
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; x0 += sx; }
+      if (e2 < dx) { err += dx; y0 += sy; }
+    }
+  }
+
+  function text(str, x, y, color, scale) {
+    scale = scale || 1;
+    ctx.fillStyle = color;
+    let cx = Math.round(x);
+    const cy = Math.round(y);
+    for (let i = 0; i < str.length; i++) {
+      const g = FONT[str[i]] || FONT[" "];
+      for (let row = 0; row < 5; row++) {
+        const bits = g[row];
+        for (let col = 0; col < 3; col++) {
+          if (bits & (1 << (2 - col))) ctx.fillRect(cx + col * scale, cy + row * scale, scale, scale);
+        }
+      }
+      cx += 4 * scale;
+    }
+  }
+  function textW(str, scale) {
+    scale = scale || 1;
+    return str.length * 4 * scale - scale;
+  }
+  function centerText(str, y, color, scale, left, width) {
+    scale = scale || 1;
+    const box = width == null ? W : width;
+    const origin = left || 0;
+    text(str, origin + Math.round((box - textW(str, scale)) / 2), y, color, scale);
+  }
+  function shadowText(str, x, y, color, scale) {
+    text(str, x + 1, y + 1, "#141018", scale);
+    text(str, x, y, color, scale || 1);
+  }
+
+  function drawSprite(rows, x, y, pal, scale) {
+    scale = scale || 1;
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      for (let c = 0; c < row.length; c++) {
+        const ch = row[c];
+        if (ch === "." || !pal[ch]) continue;
+        rect(x + c * scale, y + r * scale, scale, scale, pal[ch]);
+      }
+    }
+  }
+
+  function panel(x, y, w, h, bg) {
+    x = Math.round(x); y = Math.round(y);
+    rect(x, y, w, h, bg || COL.ui);
+    rect(x, y, w, 1, COL.uiEdge);
+    rect(x, y, 1, h, COL.uiEdge);
+    rect(x, y + h - 1, w, 1, "#0c0a10");
+    rect(x + w - 1, y, 1, h, "#0c0a10");
+  }
+
+  function drawCloud(x, y, s) {
+    rect(x, y, 14 * s, 4 * s, COL.cloud);
+    rect(x + 2 * s, y - 3 * s, 8 * s, 4 * s, COL.cloud);
+    rect(x + 4 * s, y + 3 * s, 6 * s, 2 * s, COL.cloud);
+  }
+
+  function drawTree(x, ground, h, kind) {
+    rect(x, ground - h, 3, h, COL.trunk);
+    pix(x, ground - h, COL.trunkHi);
+    const greens = kind === 1
+      ? [COL.treeDk, COL.tree, COL.treeHi]
+      : ["#163e24", COL.treeDk, COL.tree];
+    const cy = ground - h;
+    rect(x - 7, cy - 8, 16, 9, greens[0]);
+    rect(x - 5, cy - 13, 12, 7, greens[1]);
+    rect(x - 2, cy - 16, 7, 5, greens[2]);
+    rect(x - 4, cy - 12, 3, 2, greens[2]);
+  }
+
+  function drawPine(x, ground, h) {
+    rect(x, ground - h, 2, h, COL.trunk);
+    for (let i = 0; i < 4; i++) {
+      const w = 13 - i * 2;
+      rect(x - Math.floor(w / 2) + 1, ground - h - i * 4, w, 4, i % 2 ? COL.treeDk : COL.tree);
+    }
+  }
+
+  function drawCabin(x, y) {
+    rect(x, y - 14, 20, 14, COL.wall);
+    rect(x, y - 14, 20, 2, "#b87848");
+    rect(x + 7, y - 8, 5, 8, COL.door);
+    rect(x + 2, y - 11, 4, 4, COL.window);
+    rect(x + 14, y - 11, 3, 3, COL.window);
+    for (let i = 0; i < 7; i++) {
+      rect(x - 2 + i, y - 15 - i, 24 - i * 2, 2, COL.roof);
+    }
+    rect(x + 15, y - 26, 3, 8, "#6a6a72");
+    rect(x + 14, y - 26, 5, 2, "#8a8a92");
+  }
+
+  function drawFlower(x, y, c) {
+    pix(x, y, COL.grass2);
+    pix(x, y - 1, COL.grass2);
+    pix(x - 1, y - 2, c);
+    pix(x + 1, y - 2, c);
+    pix(x, y - 3, c);
+    pix(x, y - 2, "#f4e8a0");
+  }
+
+  function drawBush(x, y) {
+    rect(x, y, 12, 5, COL.treeDk);
+    rect(x + 2, y - 3, 8, 4, COL.tree);
+    rect(x + 4, y - 5, 4, 3, COL.treeHi);
+  }
+
+  function drawReeds(x, y) {
+    for (let i = 0; i < 4; i++) {
+      const h = 7 + (i % 3);
+      rect(x + i * 3, y - h, 1, h, "#1e5a30");
+      pix(x + i * 3, y - h - 1, "#2a6a38");
+    }
+  }
+
+  function drawLily(x, y) {
+    rect(x, y, 7, 3, "#2a7a38");
+    rect(x + 1, y - 1, 5, 2, "#3a9450");
+    pix(x + 5, y, COL.water2);
+    pix(x + 3, y - 2, "#e07098");
+  }
+
+  function drawBoat(x, y) {
+    rect(x + 2, y - 4, 18, 4, COL.dockDk);
+    rect(x, y - 5, 22, 2, COL.dock);
+    rect(x + 1, y - 7, 16, 2, "#c08850");
+    pix(x + 4, y - 6, COL.dockDk);
+    pix(x + 16, y - 6, COL.dockDk);
+    rect(x + 18, y - 8, 1, 4, COL.trunk);
+  }
+
+  function drawBucket(x, y) {
+    rect(x, y - 7, 9, 7, COL.dockDk);
+    rect(x - 1, y - 7, 11, 2, COL.dock);
+    rect(x + 1, y - 5, 7, 4, "#4a3018");
+    if (catches > 0 && current) {
+      rect(x + 2, y - 10, 5, 3, current.icon);
+      pix(x + 6, y - 9, current.accent);
+    }
+  }
+
+  function drawStump() {
+    rect(8, 140, 30, 8, COL.dockDk);
+    rect(6, 138, 34, 3, "#7a5434");
+    rect(10, 141, 26, 2, COL.dirt);
+    const icons = [0, 1, 2];
+    icons.forEach(function (i) {
+      const x = 10 + i * 10;
+      const y = 128;
+      const sel = baitIndex === i && (state === "idle" || state === "title" || state === "caught" || state === "lost");
+      if (sel) {
+        const bob = Math.sin(time * 7) > 0 ? 0 : 1;
+        pix(x + 3, y - 4 - bob, COL.gold);
+        pix(x + 2, y - 3 - bob, COL.gold);
+        pix(x + 4, y - 3 - bob, COL.gold);
+      }
+      if (i === 0) {
+        pix(x + 1, y, "#c06058");
+        pix(x + 2, y + 1, "#e08878");
+        pix(x + 3, y, "#c06058");
+        pix(x + 4, y + 1, "#e08878");
+        pix(x + 2, y + 2, "#a04840");
+      } else if (i === 1) {
+        rect(x + 1, y, 5, 2, "#d0d6dc");
+        pix(x + 3, y + 2, COL.red);
+        pix(x + 2, y + 3, "#8a9098");
+      } else {
+        rect(x + 1, y + 1, 5, 2, COL.gold);
+        pix(x + 5, y, "#ffe080");
+        pix(x + 1, y + 3, COL.gold);
+      }
+      if (state === "idle" || state === "title" || state === "caught" || state === "lost") {
+        hits.push({ x: x - 1, y: y - 6, w: 10, h: 16, fn: function () { setBait(i); } });
+      }
+    });
+  }
+
+  function drawDock() {
+    [82, 112].forEach(function (px) {
+      rect(px, 108, 3, 36, COL.dockDk);
+      pix(px, 108, COL.trunkHi);
+    });
+    for (let i = 0; i < 8; i++) {
+      const y = 116 + i * 4;
+      rect(74, y, 46, 3, i % 2 ? COL.dock : COL.dockLt);
+      pix(80, y + 1, COL.dockDk);
+      pix(112, y + 1, COL.dockDk);
+    }
+    rect(74, 116, 46, 1, COL.dockLt);
+  }
+
+  function drawPlayer(x, y, pose) {
+    const breath = (pose === "idle" || pose === "hold") && Math.sin(time * 2.5) > 0 ? 0 : (pose === "idle" || pose === "hold" ? 1 : 0);
+    const lean = pose === "reel" ? 1 : pose === "sad" ? -1 : 0;
+    const py = y - breath;
+    const px = x + lean;
+    rect(px - 6, y, 12, 2, "rgba(0,0,0,0.28)");
+    rect(px - 5, py - 3, 4, 3, COL.boot);
+    rect(px + 1, py - 3, 4, 3, COL.boot);
+    const legH = pose === "reel" ? 6 : 7;
+    rect(px - 4, py - 3 - legH, 3, legH, COL.pants);
+    rect(px + 1, py - 3 - legH, 3, legH, COL.pantsDk);
+    const ty = py - 3 - legH - 8;
+    rect(px - 5, ty, 10, 8, COL.shirt);
+    rect(px - 5, ty, 10, 2, COL.shirtLt);
+    rect(px - 4, ty + 6, 8, 2, COL.shirtDk);
+    if (pose !== "cast") rect(px - 7, ty + 2, 2, 5, COL.skin);
+
+    const hy = ty - 7;
+    rect(px - 4, hy, 8, 6, COL.skin);
+    rect(px - 5, hy + 1, 2, 3, COL.hair);
+    pix(px + 2, hy + 2, COL.ink);
+    if (pose === "sad") {
+      pix(px + 1, hy + 4, "#c08070");
+      pix(px + 2, hy + 3, "#c08070");
+    } else if (pose === "cheer") {
+      pix(px + 1, hy + 4, "#a06050");
+      pix(px + 2, hy + 4, "#a06050");
+      pix(px + 3, hy + 4, "#a06050");
+    } else {
+      pix(px + 2, hy + 4, "#d09888");
+    }
+    const hatBob = pose === "cheer" ? -1 : 0;
+    rect(px - 5, hy - 3 + hatBob, 10, 3, COL.hat);
+    rect(px - 7, hy - 1 + hatBob, 13, 2, COL.hatLt);
+    rect(px - 4, hy - 5 + hatBob, 8, 2, COL.hatDk);
+    rect(px - 5, hy - 1 + hatBob, 10, 1, COL.band);
+
+    let hx = px + 7;
+    let hyHand = ty + 2;
+    if (pose === "cheer") {
+      rect(px + 5, ty - 4, 3, 5, COL.skin);
+      rect(px - 8, ty - 3, 3, 4, COL.skin);
+      hx = px + 7;
+      hyHand = ty - 3;
+    } else if (pose === "sad") {
+      rect(px + 4, ty + 4, 3, 4, COL.skin);
+      hx = px + 6;
+      hyHand = ty + 5;
+    } else if (pose === "cast" && castT < 0.22) {
+      rect(px - 8, ty + 1, 4, 3, COL.skin);
+      hx = px - 8;
+      hyHand = ty + 2;
+    } else if (pose === "reel") {
+      rect(px + 4, ty + 1, 4, 3, COL.skin);
+      hx = px + 8;
+      hyHand = ty + 2;
+    } else {
+      rect(px + 4, ty + 1, 4, 3, COL.skin);
+      hx = px + 8;
+      hyHand = ty + 1;
+    }
+    hand = { x: hx, y: hyHand };
+  }
+
+  function drawRod(pose) {
+    const hx = hand.x;
+    const hy = hand.y;
+    let tx = hx + 22;
+    let ty = hy - 20;
+    let bend = 0;
+    if (pose === "cast" && castT < 0.22) {
+      tx = hx - 10;
+      ty = hy - 16;
+    } else if (pose === "reel" || state === "minigame") {
+      const tension = state === "minigame" ? (1 - fishPos) : 0.4;
+      tx = hx + 20;
+      ty = hy - 16 + tension * 8;
+      bend = 4 + tension * 4;
+    } else if (pose === "sad") {
+      tx = hx + 14;
+      ty = hy - 8;
+      bend = 2;
+    } else if (pose === "cheer") {
+      tx = hx + 8;
+      ty = hy - 18;
+    }
+    const mx = (hx + tx) / 2 + bend;
+    const my = (hy + ty) / 2 + bend * 0.4;
+    line(hx, hy, mx, my, COL.trunk);
+    line(hx, hy + 1, mx, my + 1, "#8a5c38");
+    line(mx, my, tx, ty, "#d8c8a8");
+    rect(hx - 1, hy, 3, 3, "#8a9098");
+    pix(hx, hy + 1, "#e8eef2");
+    rodTip = { x: tx, y: ty };
+  }
+
+  function drawDog(x, y, pose) {
+    const hop = pose === "happy" ? Math.round(Math.abs(Math.sin(time * 12)) * 4)
+      : pose === "bark" ? Math.round(Math.abs(Math.sin(time * 16)) * 3) : 0;
+    const wagFast = pose === "happy" || pose === "alert" || pose === "bark";
+    const wag = Math.sin(time * (wagFast ? 14 : 5));
+    const sad = pose === "sad";
+    const py = y - hop;
+    rect(x - 8, y, 16, 2, "rgba(0,0,0,0.28)");
+    const tailY = py - 9 + (sad ? 3 : wag > 0 ? -2 : 1);
+    rect(x - 10, tailY, 3, 2, COL.dogDk);
+    rect(x - 12, tailY + (sad ? 1 : wag > 0 ? -1 : 1), 3, 2, COL.dog);
+    rect(x - 5, py - 3, 3, 3, COL.dogDk);
+    rect(x + 4, py - 3, 3, 3, COL.dogDk);
+    rect(x - 6, py - 11, 12, 8, COL.dog);
+    rect(x - 6, py - 11, 12, 2, COL.dogLt);
+    rect(x - 2, py - 7, 6, 3, "#c07038");
+    rect(x + 4, py - 10, 4, 5, COL.cream);
+    const headY = sad ? py - 14 : py - 16;
+    rect(x + 5, headY, 8, 7, COL.dog);
+    const ear = sad ? 2 : (pose === "alert" || pose === "bark" || pose === "watch") ? -1 : 0;
+    rect(x + 5, headY - 2 + ear, 3, 4, COL.dogDk);
+    rect(x + 8, headY - 1 + ear, 2, 3, "#a86430");
+    rect(x + 11, headY + 3, 4, 3, COL.cream);
+    pix(x + 14, headY + 3, COL.nose);
+    pix(x + 9, headY + 2, COL.ink);
+    pix(x + 9, headY + 1, COL.white);
+    if (pose === "bark" || pose === "happy") pix(x + 13, headY + 5, "#6a3030");
+    if (pose === "happy") pix(x + 13, headY + 6, "#e07070");
+    rect(x + 6, headY + 6, 4, 1, COL.collar);
+    pix(x + 7, headY + 6, COL.gold);
+    if ((pose === "bark" && barkT > 0) || (pose === "happy" && Math.sin(time * 8) > 0.2)) {
+      shadowText(pose === "happy" ? "WOOF" : "!", x + 8, headY - 10, COL.gold, 1);
+    }
+  }
+
+  function ripple(x, y, r, color) {
+    const rr = Math.max(1, Math.round(r));
+    ctx.fillStyle = color;
+    for (let a = 0; a < 14; a++) {
+      const ang = a / 14 * Math.PI * 2;
+      ctx.fillRect(
+        Math.round(x + Math.cos(ang) * rr * 1.5),
+        Math.round(y + Math.sin(ang) * rr * 0.45),
+        1, 1
+      );
+    }
+  }
+
+  function bobberPosition() {
+    if (state === "casting") {
+      const t = clamp((castT - 0.2) / 0.8, 0, 1);
+      if (castT < 0.2) return null;
+      return {
+        x: lerp(castFrom.x, castTo.x, t),
+        y: lerp(castFrom.y, castTo.y, t) - Math.sin(t * Math.PI) * 26
+      };
+    }
+    if (state === "idle" || state === "title") return null;
+    if (state === "hauling") {
+      const t = clamp(animT / 0.48, 0, 1);
+      return { x: lerp(castTo.x, hand.x, t), y: lerp(castTo.y, hand.y, t) };
+    }
+    let y = castTo.y + Math.sin(time * 2.2);
+    if (state === "waiting" || state === "biting") y += nibbleDip;
+    if (state === "minigame") y += Math.sin(time * 16) * 1.4 + (0.5 - fishPos) * 5;
+    if (state === "fleeing") y += animT * 10;
+    return { x: castTo.x, y: y };
+  }
+
+  function drawBobber(x, y) {
+    const bait = activeBait();
+    const pairs = [["#e24b3c", "#f4f4f4"], ["#d8dee4", "#c44a3a"], ["#f0c040", "#fff4c0"]];
+    const col = pairs[bait];
+    rect(x - 1, y - 5, 3, 2, col[0]);
+    rect(x - 1, y - 3, 3, 2, col[1]);
+    pix(x, y - 6, COL.ink);
+    pix(x, y - 1, COL.ink);
+    pix(x, y + 1, "#8a9098");
+  }
+
+  function drawFishIcon(x, y, fish) {
+    const b = fish.icon;
+    const a = fish.accent;
+    rect(x - 3, y - 1, 6, 3, b);
+    rect(x - 2, y - 2, 4, 1, b);
+    pix(x + 3, y, a);
+    pix(x + 4, y - 1, a);
+    pix(x + 4, y + 1, a);
+    pix(x - 1, y, EYE);
+    pix(x, y, COL.ink);
+  }
+
+  function drawScene() {
+    rect(0, 0, W, 20, COL.sky0);
+    rect(0, 20, W, 16, COL.sky1);
+    rect(0, 36, W, 12, COL.sky2);
+    rect(0, 48, W, 10, COL.sky3);
+
+    rect(108, 8, 10, 10, COL.sun);
+    rect(110, 6, 6, 14, COL.sun);
+    rect(106, 10, 14, 6, COL.sun);
+    rect(111, 9, 4, 4, COL.sunHi);
+
+    scenery.clouds.forEach(function (cl) {
+      const x = ((cl.x + time * cl.spd) % 380) - 30;
+      drawCloud(x, cl.y, cl.w);
+    });
+
+    const flap = Math.sin(time * 10) > 0;
+    const bx = ((time * 16) % 380) - 30;
+    const by = 22 + Math.round(Math.sin(time * 0.8) * 2);
+    pix(bx, by, "#2a2420");
+    pix(bx - 1, by + (flap ? -1 : 0), "#2a2420");
+    pix(bx + 1, by + (flap ? -1 : 0), "#2a2420");
+    pix(bx - 2, by + (flap ? -2 : 1), "#2a2420");
+    pix(bx + 2, by + (flap ? -2 : 1), "#2a2420");
+
+    for (let i = 0; i < 10; i++) {
+      const inset = Math.floor(i * 1.6);
+      rect(18 + inset, 52 - i, 70 - inset * 2, 1, i > 6 ? COL.hill : COL.hillDk);
+    }
+    for (let i = 0; i < 8; i++) {
+      const inset = Math.floor(i * 2);
+      rect(250 + inset, 50 - i, 60 - inset * 2, 1, COL.hillDk);
+    }
+
+    drawPine(16, 56, 16);
+    drawTree(36, 58, 14, 0);
+    drawTree(58, 57, 18, 1);
+    drawPine(86, 56, 20);
+    drawTree(108, 58, 13, 0);
+    drawCabin(188, 56);
+    drawTree(228, 57, 16, 1);
+    drawPine(256, 56, 18);
+    drawTree(278, 58, 12, 0);
+    drawTree(300, 57, 15, 1);
+
+    rect(0, 54, W, 2, "#6b4428");
+    rect(0, 56, W, 6, "#2a5a34");
+    rect(40, 52, 28, 1, "#8a6240");
+    rect(40, 54, 28, 1, "#8a6240");
+    [40, 48, 56, 64].forEach(function (px) { rect(px, 50, 1, 6, "#6b4a2a"); });
+
+    rect(0, 62, W, 12, COL.water0);
+    rect(0, 74, W, 18, COL.water1);
+    rect(0, 92, W, 20, COL.water2);
+    rect(0, 112, W, 18, COL.water3);
+
+    ctx.globalAlpha = 0.35;
+    [20, 40, 62, 90, 112, 232, 260, 284, 304].forEach(function (tx, i) {
+      const off = Math.round(Math.sin(time * 1.6 + i) * 1);
+      for (let yy = 0; yy < 8; yy += 2) rect(tx + off, 64 + yy, 8, 1, COL.treeDk);
+    });
+    ctx.globalAlpha = 1;
+
+    const glintX = 116;
+    for (let i = 0; i < 7; i++) {
+      const y = 68 + i * 7;
+      const w = ((i + Math.floor(time * 3)) % 3 === 0) ? 3 : 1;
+      rect(glintX + Math.round(Math.sin(time * 1.4 + i) * 2), y, w, 1, "#f0e0a0");
+    }
+
+    const waveRows = [70, 80, 90, 102, 112];
+    waveRows.forEach(function (y, i) {
+      const off = Math.floor(time * (10 + i * 4)) % 10;
+      ctx.fillStyle = i % 2 ? COL.wave : COL.waveDk;
+      for (let x = 8; x < 310; x += 10) ctx.fillRect(x + off, y + ((x / 10 + i) % 3 === 0 ? 1 : 0), 4, 1);
+    });
+
+    const amb = [
+      { base: 130, y: 84, spd: 12, ph: 0 },
+      { base: 150, y: 104, spd: -9, ph: 2 },
+      { base: 170, y: 76, spd: 8, ph: 4 }
+    ];
+    amb.forEach(function (f) {
+      const x = 130 + ((f.base + time * f.spd) % 80);
+      ctx.fillStyle = "#102c48";
+      ctx.fillRect(Math.round(x), f.y, 5, 2);
+      ctx.fillRect(Math.round(x) - 2, f.y + 1, 2, 1);
+    });
+
+    drawLily(146, 100);
+    drawLily(210, 92);
+    drawReeds(132, 124);
+    drawReeds(236, 122);
+
+    const dfx = 154 + Math.sin(time * 0.8) * 28;
+    const dfy = 72 + Math.sin(time * 1.6) * 4;
+    const wing = Math.sin(time * 24) > 0;
+    pix(dfx, dfy, "#203040");
+    pix(dfx + 1, dfy, "#c04030");
+    if (wing) {
+      pix(dfx - 2, dfy - 1, "#d8eef8");
+      pix(dfx + 3, dfy - 1, "#d8eef8");
+    } else {
+      pix(dfx - 1, dfy - 2, "#d8eef8");
+      pix(dfx + 2, dfy - 2, "#d8eef8");
+    }
+
+    for (let x = 0; x < W; x++) {
+      const sy = scenery.shore[x];
+      rect(x, sy, 1, 8, COL.grass0);
+      rect(x, sy + 8, 1, H - sy - 8, x % 17 < 4 && sy > 128 ? COL.dirt : COL.grass1);
+    }
+    rect(0, 156, W, 24, COL.grass2);
+    scenery.tufts.forEach(function (t) {
+      if (t.x > 70 && t.x < 124 && t.y > 116 && t.y < 150) return;
+      rect(t.x, t.y, 1, t.h, t.c);
+    });
+    scenery.flowers.forEach(function (f) {
+      if (f.x > 70 && f.x < 124) return;
+      drawFlower(f.x, f.y, f.c);
+    });
+
+    drawDock();
+    drawBush(-2, 136);
+    drawBush(292, 140);
+    drawBoat(206, 152);
+    drawBucket(132, 150);
+    drawStump();
+    rect(128, 146, 16, 6, COL.dirt);
+
+    if (state === "idle" || state === "title") {
+      const pulse = 3 + Math.sin(time * 3) * 1.2;
+      ripple(176, 94, pulse, "#8ec8e0");
+    }
+  }
+
+  function drawWorldActors() {
+    drawDog(LAYOUT.dogX, LAYOUT.dogY, dogPose);
+    const pose = state === "casting" ? "cast" : playerPose;
+    drawPlayer(LAYOUT.playerX, LAYOUT.playerY, pose);
+    drawRod(pose);
+
+    const bob = bobberPosition();
+    if (bob && state !== "idle" && state !== "title") {
+      const sag = state === "minigame" ? -1 : state === "hauling" ? 0 : 3;
+      const mx = (rodTip.x + bob.x) / 2;
+      const my = (rodTip.y + bob.y) / 2 + sag;
+      line(rodTip.x, rodTip.y, mx, my, COL.line);
+      line(mx, my, bob.x, bob.y - 5, COL.line);
+      if (state !== "hauling") {
+        ripple(bob.x, bob.y + 2, 2 + (time * 1.3 % 2) * 2.4, "#9ed0e8");
+        ripple(bob.x, bob.y + 2, 2 + ((time * 1.3 + 1.1) % 2) * 2.4, "#163e66");
+      }
+      drawBobber(bob.x, bob.y);
+      if (state === "biting") {
+        const flash = Math.sin(time * 18) > 0 ? COL.gold : COL.white;
+        shadowText("!", bob.x - 2, bob.y - 18, flash, 2);
+        const frac = clamp(biteWindow / biteMax, 0, 1);
+        rect(bob.x - 11, bob.y - 22, 22, 3, COL.ink);
+        rect(bob.x - 11, bob.y - 22, Math.max(1, Math.round(22 * frac)), 2, frac < 0.35 ? COL.red : COL.gold);
+      }
+      if (state === "hauling" || state === "fleeing") {
+        const t = clamp(animT / (state === "hauling" ? 0.48 : 0.4), 0, 1);
+        let fx;
+        let fy;
+        if (state === "hauling") {
+          fx = lerp(castTo.x, hand.x, t);
+          fy = lerp(castTo.y, hand.y, t);
+        } else {
+          fx = castTo.x + t * 28;
+          fy = castTo.y - Math.sin(t * Math.PI) * 12;
+        }
+        drawSprite(current.sprite, fx - 8, fy - 8, current.pal, 1);
+      }
+    }
+
+    particles.forEach(function (p) {
+      ctx.globalAlpha = clamp(p.life / p.max, 0, 1);
+      rect(p.x, p.y, p.size, p.size, p.color);
+      ctx.globalAlpha = 1;
+    });
+    floaters.forEach(function (f) {
+      ctx.globalAlpha = clamp(f.life / f.max, 0, 1);
+      shadowText(f.text, f.x, f.y, f.color, 1);
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  function posToY(pos, trackY, trackH) {
+    return trackY + trackH - pos * trackH;
+  }
+
+  function drawMinigame() {
+    if (state !== "minigame") return;
+    const trackX = 286;
+    const trackY = 28;
+    const trackW = 16;
+    const trackH = 124;
+    panel(248, 16, 68, 148);
+    const tc = tierColor(current.tier);
+    centerText(current.short, 20, tc, 1, 250, 64);
+    "CATCH".split("").forEach(function (ch, i) {
+      text(ch, 254, 36 + i * 7, COL.dim, 1);
+    });
+    const progX = 268;
+    rect(progX, trackY, 6, trackH, "#101820");
+    const fill = Math.round(progress * trackH);
+    const pc = progress < 0.28 ? COL.red : progress < 0.7 ? COL.gold : COL.green;
+    rect(progX, trackY + trackH - fill, 6, fill, pc);
+    rect(progX, trackY, 6, 1, COL.uiEdge);
+    rect(progX, trackY + trackH - 1, 6, 1, COL.uiEdge);
+
+    const inside = fishInZone();
+    rect(trackX, trackY, trackW, trackH, inside ? "#163028" : (progress < 0.16 && Math.sin(time * 16) > 0 ? "#3a2030" : "#142433"));
+    rect(trackX, trackY, trackW, 1, tc);
+    rect(trackX, trackY + trackH - 1, trackW, 1, tc);
+    rect(trackX, trackY, 1, trackH, tc);
+    rect(trackX + trackW - 1, trackY, 1, trackH, tc);
+
+    const zh = Math.round(TUNE.zoneH * trackH);
+    const zc = posToY(zone, trackY, trackH);
+    const zt = Math.round(zc - zh / 2);
+    rect(trackX + 1, zt, trackW - 2, zh, inside ? COL.greenLt : COL.green);
+    rect(trackX + 1, zt, trackW - 2, 2, COL.white);
+    rect(trackX + 1, zt + zh - 2, trackW - 2, 2, COL.greenDk);
+
+    const hold = holding();
+    if (hold) {
+      pix(trackX - 3, zt + 2, COL.white);
+      pix(trackX - 4, zt + 3, COL.white);
+      pix(trackX - 2, zt + 3, COL.white);
+    } else {
+      const by = zt + zh - 2;
+      pix(trackX - 3, by, COL.dim);
+      pix(trackX - 4, by - 1, COL.dim);
+      pix(trackX - 2, by - 1, COL.dim);
+    }
+
+    fishTrail.forEach(function (p, i) {
+      ctx.globalAlpha = 0.12 + i * 0.08;
+      const ty = posToY(p, trackY, trackH);
+      rect(trackX + 5, ty - 1, 5, 3, current.icon);
+      ctx.globalAlpha = 1;
+    });
+    const fy = posToY(fishPos, trackY, trackH);
+    drawFishIcon(trackX + 7, fy, current);
+    centerText(grace > 0 ? "READY" : current.motion, 150, grace > 0 ? COL.gold : tc, 1, 250, 64);
+  }
+
+  function drawCard() {
+    if (state !== "caught" && state !== "lost") return;
+    const x = 118;
+    const y = 24;
+    const w = 156;
+    const h = 118;
+    const tc = tierColor(current.tier);
+    panel(x, y, w, h);
+    rect(x + 2, y + 2, 3, h - 4, tc);
+    const header = state === "caught" ? "CAUGHT!" : (failKind === "slow" ? "TOO SLOW" : (maxProgress > 0.72 ? "SO CLOSE" : "GOT AWAY"));
+    centerText(header, y + 8, state === "caught" ? COL.gold : COL.red, 1, x, w);
+    const sw = current.sprite[0].length * 3;
+    const sh = current.sprite.length * 3;
+    const sx = x + Math.round((w - sw) / 2);
+    const sy = y + 20 + (Math.sin(time * 3) > 0 ? 0 : 1);
+    rect(sx - 4, sy - 3, sw + 8, sh + 6, "#16344e");
+    drawSprite(current.sprite, sx, sy, current.pal, 3);
+    if (current.tier === "legendary") {
+      for (let i = 0; i < 5; i++) {
+        const a = time * 2.4 + i * 1.3;
+        pix(sx + sw / 2 + Math.cos(a) * 22, sy + sh / 2 + Math.sin(a) * 12, i % 2 ? COL.gold : COL.white);
+      }
+    }
+    centerText(current.name, y + 52, COL.uiInk, 1, x, w);
+    centerText(current.diff + " - " + current.motion, y + 62, tc, 1, x, w);
+    centerText(current.rare, y + 72, COL.dim, 1, x, w);
+    if (state === "caught") centerText("+" + current.points, y + 84, COL.gold, 1, x, w);
+    else centerText(failKind === "slow" ? "IT SLIPPED OFF" : "THE BAR MISSED", y + 84, COL.dim, 1, x, w);
+    const prompt = Math.sin(time * 6) > 0 ? "SPACE" : "SPACE";
+    centerText(prompt, y + 98, COL.uiInk, 1, x, w);
+  }
+
+  function drawTitle() {
+    if (state !== "title") return;
+    panel(156, 8, 158, 100);
+    centerText("STILLWATER", 16, COL.gold, 2, 160, 150);
+    centerText("PIP IS READY", 36, COL.uiInk, 1, 160, 150);
+    text("SPACE OR CLICK CASTS", 166, 50, COL.uiInk, 1);
+    text("HOOK WHEN IT DIPS", 166, 60, COL.uiInk, 1);
+    text("HOLD TO LIFT THE BAR", 166, 70, COL.uiInk, 1);
+    text("1 2 3 CHANGE BAIT", 166, 84, COL.gold, 1);
+    centerText("SPACE TO START", 96, Math.sin(time * 5) > 0 ? COL.white : COL.gold, 1, 160, 150);
+  }
+
+  function drawHUD() {
+    panel(4, 4, 78, 28);
+    text("SCORE " + Math.floor(shownScore), 8, 8, COL.uiInk, 1);
+    text("CAUGHT " + catches, 8, 15, COL.uiInk, 1);
+    text(BAITS[activeBait()].name, 8, 22, BAITS[activeBait()].color, 1);
+    if (muted) text("MUTED", 58, 8, COL.red, 1);
+
+    if (state !== "minigame" && state !== "hauling" && state !== "fleeing") {
+      for (let i = 0; i < 3; i++) {
+        const x = 228 + i * 28;
+        const y = 4;
+        const sel = activeBait() === i;
+        panel(x, y, 26, 16, sel ? "#2a2418" : COL.ui);
+        if (sel) rect(x, y, 26, 1, BAITS[i].color);
+        text(String(i + 1), x + 4, y + 6, sel ? BAITS[i].color : COL.dim, 1);
+        text(i === 0 ? "W" : i === 1 ? "S" : "G", x + 14, y + 6, sel ? COL.uiInk : COL.dim, 1);
+        if (state === "idle" || state === "title" || state === "caught" || state === "lost") {
+          hits.push({ x: x, y: y, w: 26, h: 16, fn: function () { setBait(i); } });
+        }
+      }
+    }
+
+    rect(0, 170, W, 10, "#141018");
+    rect(0, 170, W, 1, "#3a3050");
+    let hint = "SPACE CAST - HOOK THE DIP - HOLD LIFTS - 1 2 3 BAIT";
+    let hc = COL.uiInk;
+    if (state === "title") { hint = "SPACE TO START"; hc = Math.sin(time * 5) > 0 ? COL.gold : COL.white; }
+    else if (state === "biting") { hint = "HOOK IT NOW"; hc = Math.sin(time * 16) > 0 ? COL.gold : COL.white; }
+    else if (state === "minigame") { hint = grace > 0 ? "GET READY" : "HOLD SPACE OR MOUSE TO LIFT"; hc = COL.gold; }
+    else if (state === "waiting") { hint = "WAIT FOR THE DIP"; }
+    else if (state === "casting") { hint = "CASTING"; }
+    else if (state === "caught" || state === "lost") { hint = "SPACE TO CONTINUE"; hc = COL.gold; }
+    else if (state === "hauling") { hint = "GOT IT"; hc = COL.gold; }
+    else if (state === "fleeing") { hint = "OH NO"; hc = COL.red; }
+    centerText(hint, 173, hc, 1);
+
+    if (toastT > 0 && state !== "minigame") {
+      const tw = textW(toast, 1) + 8;
+      const tx = Math.round((W - tw) / 2);
+      panel(tx, 36, tw, 12);
+      text(toast, tx + 4, 39, COL.gold, 1);
+    }
+  }
+
+  function render() {
+    hits = [];
+    const sx = shake > 0.3 ? Math.round((Math.random() - 0.5) * shake) : 0;
+    const sy = shake > 0.3 ? Math.round((Math.random() - 0.5) * shake) : 0;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = COL.sky0;
+    ctx.fillRect(0, 0, W, H);
+    ctx.setTransform(1, 0, 0, 1, sx, sy);
+    drawScene();
+    drawWorldActors();
+    drawMinigame();
+    drawCard();
+    drawTitle();
+    drawHUD();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  function fit() {
+    const s = Math.max(1, Math.floor(Math.min(window.innerWidth / W, (window.innerHeight - 48) / H)));
+    canvas.style.width = (W * s) + "px";
+    canvas.style.height = (H * s) + "px";
+  }
+
+  let last = 0;
+  function frame(ts) {
+    requestAnimationFrame(frame);
+    const dt = Math.min(0.033, last ? (ts - last) / 1000 : 0.016);
+    last = ts;
+    update(dt);
+    render();
+  }
+
+  initScenery();
+  fit();
+  window.addEventListener("resize", fit);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

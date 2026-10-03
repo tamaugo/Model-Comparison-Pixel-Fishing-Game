@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pixel Fishing</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #0a0a14; min-height: 100%; overflow-x: hidden; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; font-family: 'Courier New', monospace; color: #cfe; padding: 16px; }
+  #wrap { text-align: center; }
+  #game { image-rendering: pixelated; image-rendering: -moz-crisp-edges; image-rendering: crisp-edges; display: block; margin: 0 auto; box-shadow: 0 0 30px rgba(0,0,0,0.6); border: 2px solid #2a2a3a; background: #000; cursor: crosshair; }
+  #info { margin-top: 14px; font-size: 12px; color: #aab; line-height: 1.6; max-width: 900px; padding: 0 8px; }
+  #info b { color: #ffd84a; }
+  #info kbd { background: #2a2a3a; padding: 1px 6px; border-radius: 3px; font-size: 11px; color: #fff; font-family: monospace; }
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="game" width="320" height="180"></canvas>
+<div id="info">
+  <b>Pixel Fishing</b> &mdash; Cast with <kbd>Click</kbd> or <kbd>Space</kbd>. When you see <b>!</b> on the bobber, click fast! Reel by <b>holding</b> mouse or <kbd>Space</kbd> to lift your bobber, release to drop. Switch bait with <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>. Open the shop with <kbd>E</kbd>, sell all fish with <kbd>S</kbd>. Catch all 9 species to complete the collection!
+</div>
+</div>
+<script>
+'use strict';
+
+// ============================================================================
+// SETUP
+// ============================================================================
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+const W = 320, H = 180;
+const SCALE = 4;
+canvas.style.width = (W * SCALE) + 'px';
+canvas.style.height = (H * SCALE) + 'px';
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+function rect(x, y, w, h, c) {
+  x = Math.floor(x); y = Math.floor(y); w = Math.floor(w); h = Math.floor(h);
+  if (w <= 0 || h <= 0) return;
+  ctx.fillStyle = c;
+  ctx.fillRect(x, y, w, h);
+}
+function px(x, y, c) { rect(x, y, 1, 1, c); }
+function clear() { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
+function clamp(v, mn, mx) { return Math.max(mn, Math.min(mx, v)); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+// ============================================================================
+// COLORS
+// ============================================================================
+const C = {
+  sky1: '#9bd1ff', sky2: '#bce3ff',
+  cloud: '#ffffff', cloud2: '#d6e2f0',
+  sun: '#fff48a', sun2: '#ffd84a',
+  mtn1: '#5a6b8a', mtn2: '#7a8baa', mtn3: '#3a4a6a',
+  tree1: '#1a3a1a', tree2: '#2c5a2a', tree3: '#3e7a3a', tree4: '#5a9a3a',
+  grass1: '#5a9a3a', grass2: '#3a6a2a', grass3: '#7ab84a',
+  dirt1: '#7a4a2a', dirt2: '#5a3a1a', dirt3: '#9a6a3a',
+  water1: '#1a3aa0', water2: '#2c5cd6', water3: '#4080e0', water4: '#80b0f0',
+  bobber: '#d83838', bobber2: '#f8f8f8',
+  line: '#222222',
+  rock: '#6a6a7a', rock2: '#4a4a5a',
+  sign: '#7a4a2a', sign2: '#5a3a1a',
+  phat: '#c83838', phat2: '#8a1a1a',
+  pskin: '#f4c8a0', pskin2: '#c89870',
+  phair: '#5a3a1a',
+  pbody: '#3a6ad6', pbody2: '#2a4aa6',
+  ppants: '#3a2a1a', ppants2: '#1a0a00',
+  pshoe: '#1a1a1a',
+  prod: '#7a4a2a', prod2: '#5a3a1a',
+  dbody: '#a8703a', dbody2: '#7a4a1a', dbelly: '#d4a070',
+  dnose: '#1a1a1a', dtongue: '#d86060',
+  ubg: '#10182a', ubg2: '#202840', uborder: '#5a6a8a',
+  utext: '#ffffff', utext2: '#aabbcc',
+  ugold: '#ffd84a', ugold2: '#c8a02a',
+  ugood: '#5aff5a', ubad: '#ff5a5a',
+  uwarn: '#ff8a3a'
+};
+
+// ============================================================================
+// PIXEL FONT
+// ============================================================================
+const FONT = {
+  'A':['010','101','111','101','101'],'B':['110','101','110','101','110'],
+  'C':['011','100','100','100','011'],'D':['110','101','101','101','110'],
+  'E':['111','100','110','100','111'],'F':['111','100','110','100','100'],
+  'G':['011','100','101','101','011'],'H':['101','101','111','101','101'],
+  'I':['111','010','010','010','111'],'J':['001','001','001','101','010'],
+  'K':['101','110','100','110','101'],'L':['100','100','100','100','111'],
+  'M':['101','111','111','101','101'],'N':['101','111','111','111','101'],
+  'O':['010','101','101','101','010'],'P':['110','101','110','100','100'],
+  'Q':['010','101','101','110','011'],'R':['110','101','110','101','101'],
+  'S':['011','100','010','001','110'],'T':['111','010','010','010','010'],
+  'U':['101','101','101','101','010'],'V':['101','101','101','010','010'],
+  'W':['101','101','111','111','101'],'X':['101','101','010','101','101'],
+  'Y':['101','101','010','010','010'],'Z':['111','001','010','100','111'],
+  '0':['111','101','101','101','111'],'1':['010','110','010','010','111'],
+  '2':['110','001','010','100','111'],'3':['110','001','010','001','110'],
+  '4':['101','101','111','001','001'],'5':['111','100','110','001','110'],
+  '6':['011','100','110','101','010'],'7':['111','001','010','100','100'],
+  '8':['010','101','010','101','010'],'9':['010','101','011','001','110'],
+  '.':['000','000','000','000','010'],',':['000','000','000','010','100'],
+  '!':['010','010','010','000','010'],'?':['110','001','010','000','010'],
+  ':':['000','010','000','010','000'],'-':['000','000','111','000','000'],
+  '+':['000','010','111','010','000'],' ':['000','000','000','000','000'],
+  '$':['010','111','010','111','010'],'/':['001','001','010','100','100'],
+  '(':['010','100','100','100','010'],')':['010','001','001','001','010'],
+  '*':['000','101','010','101','000'],'<':['001','010','100','010','001'],
+  '>':['100','010','001','010','100'],'_':['000','000','000','000','111'],
+  "'":['010','010','000','000','000'],'"':['101','101','000','000','000']
+};
+
+function drawText(text, x, y, color, scale) {
+  scale = scale || 1;
+  text = (text || '').toUpperCase();
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const glyph = FONT[ch] || FONT[' '];
+    for (let row = 0; row < 5; row++) {
+      for (let col = 0; col < 3; col++) {
+        if (glyph[row][col] === '1') {
+          rect(x + i * 4 * scale + col * scale, y + row * scale, scale, scale, color);
+        }
+      }
+    }
+  }
+}
+function textWidth(text, scale) {
+  scale = scale || 1;
+  return text.length * 4 * scale - scale;
+}
+
+// ============================================================================
+// FISH
+// ============================================================================
+const FISH = [
+  { id: 'anchovy', name: 'Anchovy', diff: 1, color: '#a8b8c8', accent: '#506878', fin: '#8090a0', value: 25, speed: 0.8, behavior: 'smooth' },
+  { id: 'sardine', name: 'Sardine', diff: 1, color: '#c8d8e8', accent: '#708090', fin: '#a0b0c0', value: 30, speed: 0.9, behavior: 'smooth' },
+  { id: 'bass', name: 'Bass', diff: 2, color: '#6fa85c', accent: '#3d6b2e', fin: '#88c870', value: 55, speed: 1.4, behavior: 'smooth' },
+  { id: 'trout', name: 'Trout', diff: 2, color: '#e0a0a0', accent: '#b06060', fin: '#ff9090', value: 65, speed: 1.5, behavior: 'mixed' },
+  { id: 'pike', name: 'Pike', diff: 3, color: '#5a8050', accent: '#2a4a28', fin: '#80a060', value: 100, speed: 2.0, behavior: 'mixed' },
+  { id: 'catfish', name: 'Catfish', diff: 3, color: '#806050', accent: '#403028', fin: '#5a4030', value: 120, speed: 1.7, behavior: 'erratic' },
+  { id: 'eel', name: 'Eel', diff: 4, color: '#3a5a4a', accent: '#1a2a24', fin: '#506a5a', value: 180, speed: 2.4, behavior: 'dart' },
+  { id: 'octopus', name: 'Octopus', diff: 4, color: '#a04080', accent: '#602050', fin: '#c060a0', value: 240, speed: 1.5, behavior: 'wobble' },
+  { id: 'koi', name: 'Koi King', diff: 5, color: '#ff5050', accent: '#ffffff', fin: '#ffd84a', value: 600, speed: 2.6, behavior: 'legendary', legendary: true }
+];
+
+// ============================================================================
+// BAIT
+// ============================================================================
+const BAIT = [
+  { name: 'Worms', desc: 'Basic bait. Catches common fish.', cost: 0, mult: 'common' },
+  { name: 'Lure', desc: 'Sparkly. Better for mid fish.', cost: 20, mult: 'mid' },
+  { name: 'Magic', desc: 'Mystical. Rare fish bite.', cost: 50, mult: 'rare' }
+];
+
+function getWeights(mult) {
+  const arr = new Array(FISH.length);
+  for (let i = 0; i < FISH.length; i++) {
+    const d = FISH[i].diff;
+    if (mult === 'common') arr[i] = 1 + (5 - d) * 0.35;
+    else if (mult === 'mid') arr[i] = (d === 2 || d === 3) ? 1.6 : (d === 1 ? 0.3 : 0.7);
+    else if (mult === 'rare') arr[i] = d >= 4 ? 2.5 : 0.35;
+    else arr[i] = 1;
+  }
+  return arr;
+}
+
+function pickFish(baitIndex) {
+  const weights = getWeights(BAIT[baitIndex].mult);
+  let total = 0;
+  for (let i = 0; i < weights.length; i++) total += weights[i];
+  let r = Math.random() * total;
+  for (let i = 0; i < FISH.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return FISH[i];
+  }
+  return FISH[0];
+}
+
+// ============================================================================
+// GAME STATE
+// ============================================================================
+const game = {
+  state: 'idle',
+  time: 0,
+  money: 50,
+  baitIndex: 0,
+  baitQty: 15,
+  inventory: {},
+  totalCaught: 0,
+  castT: 0,
+  castStart: { x: 245, y: 120 },
+  castEnd: { x: 0, y: 0 },
+  bobber: { x: 245, y: 120 },
+  waitTimer: 0,
+  biteWindow: 0,
+  fish: null,
+  fishY: 0.5,
+  fishVy: 0,
+  fishPattern: 0,
+  bobberY: 0.5,
+  bobberVy: 0,
+  catchProgress: 0,
+  minigameTime: 0,
+  ripples: [],
+  splashes: [],
+  bubbles: [],
+  dogState: 'sit',
+  dogX: 175,
+  dogY: 158,
+  dogAnim: 0,
+  dogBark: 0,
+  dogTargetX: 175,
+  castArm: 0,
+  message: '',
+  messageTimer: 0,
+  catchDisplay: null,
+  catchDisplayTimer: 0,
+  shopOpen: false,
+  rodTip: { x: 249, y: 122 }
+};
+
+// ============================================================================
+// INPUT
+// ============================================================================
+const input = { mouseDown: false, space: false };
+
+function onPress() {
+  if (game.shopOpen) return;
+  if (game.state === 'idle') startCast();
+  else if (game.state === 'bite') startMinigame();
+  else if (game.state === 'catch' || game.state === 'miss') closeCatch();
+}
+
+canvas.addEventListener('mousedown', e => {
+  input.mouseDown = true;
+  e.preventDefault();
+  onPress();
+});
+canvas.addEventListener('mouseup', e => { input.mouseDown = false; });
+canvas.addEventListener('touchstart', e => {
+  input.mouseDown = true;
+  e.preventDefault();
+  onPress();
+});
+canvas.addEventListener('touchend', e => {
+  input.mouseDown = false;
+  e.preventDefault();
+});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') {
+    input.space = true;
+    e.preventDefault();
+    onPress();
+  }
+  if (e.key === '1') setBait(0);
+  if (e.key === '2') setBait(1);
+  if (e.key === '3') setBait(2);
+  if (e.key === 'e' || e.key === 'E') toggleShop();
+  if (e.key === 's' || e.key === 'S') sellAll();
+  if (e.key === 'Escape') {
+    if (game.shopOpen) game.shopOpen = false;
+    else closeCatch();
+  }
+});
+window.addEventListener('keyup', e => { if (e.code === 'Space') input.space = false; });
+
+// ============================================================================
+// ACTIONS
+// ============================================================================
+function setBait(i) {
+  if (i < 0 || i >= BAIT.length) return;
+  if (i === game.baitIndex) {
+    if (BAIT[i].cost > 0 && game.money >= BAIT[i].cost) {
+      game.money -= BAIT[i].cost;
+      game.baitQty += 5;
+      showMessage('+5 ' + BAIT[i].name);
+    } else if (BAIT[i].cost === 0) {
+      game.baitQty += 5;
+      showMessage('+5 Worms (free)');
+    } else {
+      showMessage('Need $' + BAIT[i].cost);
+    }
+    return;
+  }
+  game.baitIndex = i;
+  game.baitQty = 5;
+  showMessage('Switched to ' + BAIT[i].name);
+}
+
+function sellAll() {
+  if (!game.shopOpen && game.state !== 'idle') return;
+  let total = 0;
+  for (const id in game.inventory) {
+    const f = FISH.find(x => x.id === id);
+    if (f && game.inventory[id] > 0) {
+      total += f.value * game.inventory[id];
+      game.inventory[id] = 0;
+    }
+  }
+  if (total > 0) {
+    game.money += total;
+    showMessage('Sold all fish for $' + total);
+  } else {
+    showMessage('No fish to sell');
+  }
+}
+
+function startCast() {
+  if (game.baitQty <= 0) {
+    showMessage('Out of bait! Press 1-3 or open shop (E).');
+    return;
+  }
+  const minX = 50, maxX = 270;
+  const minY = 132, maxY = 140;
+  game.castEnd.x = minX + Math.random() * (maxX - minX);
+  game.castEnd.y = minY + Math.random() * (maxY - minY);
+  game.castT = 0;
+  game.bobber.x = game.castStart.x;
+  game.bobber.y = game.castStart.y;
+  game.state = 'casting';
+  game.castArm = 1;
+  game.dogState = 'watch';
+  game.dogTargetX = clamp(game.castEnd.x - 30, 50, 270);
+}
+
+function startMinigame() {
+  game.fish = pickFish(game.baitIndex);
+  game.fishY = 0.5;
+  game.fishVy = 0;
+  game.fishPattern = 0;
+  game.bobberY = 0.5;
+  game.bobberVy = 0;
+  game.catchProgress = 0;
+  game.minigameTime = 0;
+  game.state = 'minigame';
+  game.dogState = 'bark';
+  game.dogBark = 1;
+  game.baitQty--;
+}
+
+function endMinigame(success) {
+  if (success && game.fish) {
+    const f = game.fish;
+    game.inventory[f.id] = (game.inventory[f.id] || 0) + 1;
+    game.totalCaught++;
+    game.catchDisplay = { fish: f, success: true };
+    game.state = 'catch';
+    game.dogState = 'happy';
+    game.dogBark = 1;
+    for (let i = 0; i < 8; i++) {
+      game.ripples.push({ x: game.castEnd.x, y: game.castEnd.y, r: 0, life: 30 + i * 3, maxR: 10 + i * 2 });
+    }
+    game.splashes.push({ x: game.castEnd.x, y: game.castEnd.y, life: 25 });
+  } else {
+    game.catchDisplay = { fish: game.fish, success: false, reason: 'It got away!' };
+    game.state = 'miss';
+    game.dogState = 'sad';
+  }
+  game.catchDisplayTimer = 0;
+  game.fish = null;
+}
+
+function closeCatch() {
+  if (game.state === 'catch' || game.state === 'miss') {
+    game.state = 'idle';
+    game.catchDisplay = null;
+  }
+}
+
+function showMessage(text) {
+  game.message = text;
+  game.messageTimer = 150;
+}
+
+function toggleShop() {
+  if (game.state === 'minigame' || game.state === 'casting' || game.state === 'waiting' || game.state === 'bite') return;
+  game.shopOpen = !game.shopOpen;
+}
+
+// ============================================================================
+// UPDATE
+// ============================================================================
+function update() {
+  game.time++;
+  if (game.messageTimer > 0) game.messageTimer--;
+  if (game.castArm > 0) game.castArm -= 0.04;
+  if (game.castArm < 0) game.castArm = 0;
+  if (game.dogBark > 0) game.dogBark -= 0.03;
+  if (game.dogBark < 0) game.dogBark = 0;
+
+  for (let i = game.ripples.length - 1; i >= 0; i--) {
+    const r = game.ripples[i];
+    r.life--;
+    r.r += 0.4;
+    if (r.life <= 0) game.ripples.splice(i, 1);
+  }
+  for (let i = game.splashes.length - 1; i >= 0; i--) {
+    const s = game.splashes[i];
+    s.life--;
+    if (s.life <= 0) game.splashes.splice(i, 1);
+  }
+  for (let i = game.bubbles.length - 1; i >= 0; i--) {
+    const b = game.bubbles[i];
+    b.y -= 0.2;
+    b.x += Math.sin(b.life * 0.2) * 0.1;
+    b.life--;
+    if (b.life <= 0) game.bubbles.splice(i, 1);
+  }
+
+  updateDog();
+
+  if (game.state === 'casting') {
+    game.castT += 0.028;
+    if (game.castT >= 1) {
+      game.castT = 1;
+      game.state = 'waiting';
+      game.waitTimer = 60 + Math.floor(Math.random() * 180);
+      game.splashes.push({ x: game.castEnd.x, y: game.castEnd.y, life: 25 });
+      game.ripples.push({ x: game.castEnd.x, y: game.castEnd.y, r: 0, life: 50, maxR: 8 });
+      game.bubbles.push({ x: game.castEnd.x, y: game.castEnd.y, life: 30 });
+    }
+    const t = game.castT;
+    game.bobber.x = lerp(game.castStart.x, game.castEnd.x, t);
+    const arc = 35 * Math.sin(t * Math.PI);
+    game.bobber.y = lerp(game.castStart.y, game.castEnd.y, t) - arc;
+  } else if (game.state === 'waiting') {
+    game.waitTimer--;
+    game.bobber.y = game.castEnd.y + Math.sin(game.time * 0.18) * 0.5;
+    if (Math.random() < 0.04) {
+      game.ripples.push({ x: game.castEnd.x + (Math.random() - 0.5) * 2, y: game.castEnd.y + 1, r: 0, life: 35, maxR: 5 });
+    }
+    if (game.waitTimer <= 0) {
+      game.state = 'bite';
+      game.biteWindow = 40;
+    }
+  } else if (game.state === 'bite') {
+    game.bobber.y = game.castEnd.y - 1 + Math.sin(game.time * 0.5) * 2;
+    game.biteWindow--;
+    if (game.biteWindow <= 0) {
+      game.catchDisplay = { fish: null, success: false, reason: 'Too slow!' };
+      game.state = 'miss';
+      game.dogState = 'sad';
+      game.catchDisplayTimer = 0;
+    }
+  } else if (game.state === 'minigame') {
+    game.minigameTime++;
+    updateMinigame();
+  } else if (game.state === 'catch' || game.state === 'miss') {
+    game.catchDisplayTimer++;
+    if (game.catchDisplayTimer > 100) closeCatch();
+  }
+
+  if (Math.random() < 0.015) {
+    const x = 30 + Math.random() * 260;
+    const y = 130 + Math.random() * 15;
+    game.bubbles.push({ x: x, y: y, life: 50 + Math.random() * 50 });
+  }
+}
+
+function updateDog() {
+  game.dogAnim += 0.15;
+
+  if (game.dogState === 'sit') {
+    // idle
+  } else if (game.dogState === 'watch') {
+    const dx = game.dogTargetX - game.dogX;
+    if (Math.abs(dx) > 1) {
+      game.dogX += Math.sign(dx) * 0.6;
+    } else {
+      game.dogState = 'sit';
+    }
+  } else if (game.dogState === 'bark') {
+    if (game.dogBark <= 0) {
+      game.dogState = 'sit';
+    }
+  } else if (game.dogState === 'happy') {
+    if (Math.random() < 0.04) {
+      game.dogX += (Math.random() - 0.5) * 3;
+    }
+    if (game.dogBark <= 0) {
+      game.dogState = 'sit';
+    }
+  } else if (game.dogState === 'sad') {
+    if (game.time % 240 === 0) {
+      game.dogState = 'sit';
+    }
+  }
+
+  game.dogX = clamp(game.dogX, 30, 270);
+}
+
+function updateMinigame() {
+  const f = game.fish;
+  if (!f) return;
+
+  game.fishPattern += 0.1 + f.speed * 0.02;
+  let targetVy = 0;
+
+  if (f.behavior === 'smooth') {
+    targetVy = Math.sin(game.fishPattern) * f.speed * 0.045;
+  } else if (f.behavior === 'mixed') {
+    targetVy = Math.sin(game.fishPattern * 1.3) * f.speed * 0.04 + Math.sin(game.fishPattern * 2.7) * f.speed * 0.018;
+  } else if (f.behavior === 'erratic') {
+    game.fishVy += (Math.random() - 0.5) * f.speed * 0.12;
+    game.fishVy *= 0.82;
+    targetVy = game.fishVy;
+  } else if (f.behavior === 'dart') {
+    if (Math.random() < 0.06) {
+      game.fishVy = (Math.random() - 0.5) * f.speed * 0.25;
+    }
+    game.fishVy *= 0.88;
+    targetVy = game.fishVy;
+  } else if (f.behavior === 'wobble') {
+    targetVy = Math.sin(game.fishPattern * 0.7) * f.speed * 0.035 + Math.sin(game.fishPattern * 2) * f.speed * 0.025;
+  } else if (f.behavior === 'legendary') {
+    if (Math.random() < 0.12) {
+      game.fishVy = (Math.random() - 0.5) * f.speed * 0.3;
+    }
+    game.fishVy *= 0.86;
+    targetVy = game.fishVy;
+  }
+
+  game.fishVy += (targetVy - game.fishVy) * 0.3;
+  game.fishY += game.fishVy;
+  if (game.fishY < 0.08) { game.fishY = 0.08; game.fishVy = Math.abs(game.fishVy) * 0.5; }
+  if (game.fishY > 0.92) { game.fishY = 0.92; game.fishVy = -Math.abs(game.fishVy) * 0.5; }
+
+  const up = input.mouseDown || input.space;
+  if (up) {
+    game.bobberVy -= 0.45;
+  } else {
+    game.bobberVy += 0.35;
+  }
+  game.bobberVy *= 0.82;
+  game.bobberY += game.bobberVy;
+  if (game.bobberY < 0.08) { game.bobberY = 0.08; game.bobberVy = 0; }
+  if (game.bobberY > 0.92) { game.bobberY = 0.92; game.bobberVy = 0; }
+
+  const tolerance = 0.16 - f.diff * 0.015;
+  const overlap = Math.abs(game.fishY - game.bobberY) < tolerance;
+
+  if (overlap) {
+    const rate = 0.45 + (5 - f.diff) * 0.3;
+    game.catchProgress += rate;
+    if (game.catchProgress >= 100) endMinigame(true);
+  } else {
+    const drain = 0.25 + f.diff * 0.12;
+    game.catchProgress -= drain;
+    if (game.catchProgress <= 0) {
+      game.catchProgress = 0;
+      endMinigame(false);
+    }
+  }
+}
+
+// ============================================================================
+// RENDER
+// ============================================================================
+function render() {
+  clear();
+  drawSky();
+  drawMountains();
+  drawFarTrees();
+  drawWater();
+  drawShoreline();
+  drawScenery();
+  drawPlayerAndRod();
+  drawDog();
+  drawBobberAndLine();
+  drawRipples();
+  drawSplashes();
+  drawBubbles();
+
+  if (game.state === 'minigame') drawMinigame();
+  if (game.state === 'bite') drawBiteAlert();
+  if (game.state === 'catch' || game.state === 'miss') drawCatchDisplay();
+  if (game.shopOpen) drawShop();
+  drawHUD();
+  if (game.messageTimer > 0) drawMessage();
+}
+
+function drawSky() {
+  for (let y = 0; y < 90; y++) {
+    const t = y / 90;
+    const r = Math.floor(0xbc + (0x9b - 0xbc) * t);
+    const g = Math.floor(0xe3 + (0xd1 - 0xe3) * t);
+    const b = 0xff;
+    rect(0, y, W, 1, 'rgb(' + r + ',' + g + ',' + b + ')');
+  }
+  drawSun(265, 22);
+  drawCloud(40, 18);
+  drawCloud(140, 10);
+  drawCloud(220, 30);
+}
+
+function drawSun(x, y) {
+  const pulse = Math.sin(game.time * 0.1) * 1;
+  rect(x-3, y-1, 6, 5, C.sun);
+  rect(x-2, y-2, 4, 7, C.sun);
+  rect(x-4, y, 8, 3, C.sun);
+  rect(x-1, y-3+pulse, 2, 9, C.sun);
+  if (Math.floor(game.time / 30) % 2 === 0) {
+    px(x-6, y+1, C.sun2);
+    px(x+5, y+1, C.sun2);
+    px(x, y-5, C.sun2);
+    px(x, y+5, C.sun2);
+  }
+}
+
+function drawCloud(x, y) {
+  rect(x, y+1, 16, 3, C.cloud);
+  rect(x+2, y, 12, 1, C.cloud);
+  rect(x+1, y+4, 14, 1, C.cloud2);
+  rect(x+3, y+5, 10, 1, C.cloud2);
+}
+
+function drawMountains() {
+  drawMountain(0, 95, 90, 45, C.mtn3);
+  drawMountain(50, 95, 100, 60, C.mtn2);
+  drawMountain(130, 95, 110, 50, C.mtn3);
+  drawMountain(210, 95, 90, 65, C.mtn2);
+  rect(76, 95, 8, 3, C.cloud);
+  rect(80, 95, 4, 1, C.cloud2);
+  rect(231, 95, 10, 3, C.cloud);
+  rect(235, 95, 5, 1, C.cloud2);
+}
+
+function drawMountain(x, y, w, h, c) {
+  for (let i = 0; i < w; i++) {
+    const ht = Math.max(0, h - Math.abs(i - w/2) * h / (w/2));
+    rect(x + i, y - ht, 1, ht, c);
+  }
+  for (let i = 0; i < w/2; i++) {
+    const ht = Math.max(0, h - Math.abs(i - w/2) * h / (w/2));
+    rect(x + i, y - ht, 1, ht, C.mtn1);
+  }
+}
+
+function drawFarTrees() {
+  drawTree(20, 100, 8, C.tree2, C.tree3);
+  drawTree(48, 100, 10, C.tree1, C.tree2);
+  drawTree(78, 100, 9, C.tree3, C.tree4);
+  drawTree(110, 100, 7, C.tree2, C.tree3);
+  drawTree(160, 100, 11, C.tree1, C.tree2);
+  drawTree(200, 100, 8, C.tree3, C.tree4);
+  drawTree(245, 100, 9, C.tree1, C.tree2);
+  drawTree(280, 100, 7, C.tree3, C.tree4);
+  drawTree(305, 100, 8, C.tree2, C.tree3);
+}
+
+function drawTree(x, yBase, height, color1, color2) {
+  rect(x-1, yBase - Math.floor(height/3), 2, Math.floor(height/3), '#3a2a1a');
+  for (let i = 0; i < height; i++) {
+    const halfWidth = Math.max(1, Math.floor((height - i) / 2));
+    const color = i < height * 0.4 ? color2 : color1;
+    rect(x - halfWidth, yBase - height + i, halfWidth * 2, 1, color);
+  }
+  px(x + 1, yBase - height + 2, '#7aaa5a');
+}
+
+function drawWater() {
+  for (let y = 100; y < 148; y++) {
+    const wave = Math.sin(y * 0.4 + game.time * 0.05);
+    const depth = (y - 100) / 48;
+    let color;
+    if (depth < 0.1) color = C.water3;
+    else if (depth < 0.6) color = C.water2;
+    else color = C.water1;
+    if (wave > 0.6 && y > 102) color = C.water3;
+    rect(0, y, W, 1, color);
+  }
+  rect(0, 100, W, 1, C.water4);
+  for (let i = 0; i < 6; i++) {
+    const wx = (i * 53 + game.time * 0.4) % 320;
+    const wy = 102 + Math.sin(game.time * 0.1 + i * 1.3) * 3 + i * 4;
+    if (wy >= 100 && wy < 145) {
+      if (Math.floor(game.time / 15 + i) % 3 === 0) {
+        rect(Math.floor(wx), Math.floor(wy), 2, 1, C.water4);
+      }
+    }
+  }
+  for (let i = 0; i < 3; i++) {
+    const sx = (i * 97 + game.time * 0.6) % 320;
+    const sy = 105 + i * 12;
+    if (Math.floor(game.time / 20 + i * 3) % 4 === 0) {
+      px(Math.floor(sx), Math.floor(sy), C.water4);
+      px(Math.floor(sx)+1, Math.floor(sy), C.water4);
+    }
+  }
+}
+
+function drawShoreline() {
+  rect(0, 145, W, 3, C.grass2);
+  rect(0, 143, W, 2, C.grass1);
+  for (let x = 0; x < W; x++) {
+    const h = Math.sin(x * 0.3) > 0.3 ? 1 : 0;
+    if (h) rect(x, 142, 1, 1, C.grass3);
+  }
+  rect(0, 148, W, H - 148, C.dirt1);
+  for (let i = 0; i < 25; i++) {
+    const dx = (i * 19) % W;
+    const dy = 150 + (i * 3) % (H - 150);
+    rect(dx, dy, 2, 1, C.dirt2);
+  }
+  for (let i = 0; i < 20; i++) {
+    const dx = (i * 23) % W;
+    const dy = 152 + (i * 5) % (H - 152);
+    px(dx, dy, C.dirt3);
+  }
+  for (let i = 0; i < 10; i++) {
+    const x = i * 32 + 10;
+    rect(x, 150, 1, 1, C.grass3);
+    rect(x-1, 151, 3, 1, C.grass2);
+  }
+}
+
+function drawScenery() {
+  drawLilyPad(60, 138);
+  drawLilyPad(140, 142);
+  drawLilyPad(240, 137);
+  drawLilyPad(180, 140);
+  drawReed(30, 144);
+  drawReed(33, 144);
+  drawReed(36, 144);
+  drawSign(15, 145);
+  drawRock(120, 150);
+  drawRock(280, 149);
+  drawCattail(305, 144);
+}
+
+function drawLilyPad(x, y) {
+  rect(x, y, 5, 2, '#2a6a2a');
+  rect(x-1, y, 7, 1, '#1a4a1a');
+  rect(x+1, y+1, 3, 1, '#3a8a3a');
+  if ((game.time + x * 7) % 200 < 100) {
+    px(x+2, y-1, '#ffaaff');
+  }
+}
+
+function drawReed(x, y) {
+  rect(x, y-3, 1, 3, C.grass2);
+  rect(x, y-4, 1, 1, C.grass3);
+}
+
+function drawSign(x, y) {
+  rect(x+1, y-12, 1, 9, C.sign2);
+  rect(x-2, y-19, 10, 7, C.sign);
+  rect(x-2, y-19, 10, 1, C.sign2);
+  rect(x-2, y-13, 10, 1, C.sign2);
+  drawText('SHOP', x-1, y-18, C.utext, 1);
+}
+
+function drawRock(x, y) {
+  rect(x, y, 3, 1, C.rock2);
+  rect(x-1, y+1, 5, 1, C.rock);
+  rect(x, y+2, 3, 1, C.rock2);
+}
+
+function drawCattail(x, y) {
+  rect(x, y-8, 1, 8, C.grass2);
+  rect(x-1, y-9, 3, 2, C.dbody2);
+  rect(x, y-9, 1, 1, C.dbody);
+}
+
+function drawPlayerAndRod() {
+  const px = 225, py = 145;
+  const armUp = game.castArm;
+
+  rect(px+2, py-19, 8, 2, C.phat);
+  rect(px+3, py-20, 6, 1, C.phat2);
+  rect(px+4, py-21, 4, 1, C.phat2);
+
+  rect(px+3, py-16, 6, 3, C.pskin);
+  rect(px+2, py-16, 1, 1, C.phair);
+  px(px+5, py-15, '#000');
+  px(px+7, py-15, '#000');
+  rect(px+5, py-13, 2, 1, C.pskin2);
+  px(px+6, py-14, C.pskin2);
+
+  rect(px+2, py-12, 8, 6, C.pbody);
+  rect(px+2, py-12, 2, 6, C.pbody2);
+  rect(px+5, py-12, 1, 6, C.pbody2);
+
+  if (armUp > 0.3) {
+    rect(px+9, py-12, 2, 2, C.pbody2);
+    rect(px+10, py-15, 2, 2, C.pskin);
+    rect(px+11, py-17, 2, 2, C.pskin);
+    rect(px+9, py-13, 1, 1, '#1a3aa6');
+  } else {
+    rect(px+10, py-10, 2, 3, C.pbody2);
+    rect(px+10, py-7, 2, 1, C.pskin);
+  }
+
+  rect(px+2, py-6, 8, 4, C.ppants);
+  rect(px+2, py-6, 2, 4, C.ppants2);
+  rect(px+5, py-6, 1, 4, C.ppants2);
+
+  rect(px+1, py-2, 4, 2, C.pshoe);
+  rect(px+5, py-2, 4, 2, C.pshoe);
+
+  let handX, handY, tipX, tipY;
+  if (armUp > 0.3) {
+    handX = px + 12; handY = py - 16;
+    tipX = px + 24; tipY = py - 23;
+  } else {
+    handX = px + 11; handY = py - 7;
+    tipX = px + 14; tipY = py - 9;
+  }
+  drawLine(handX, handY, tipX, tipY, C.prod, 1);
+  px(tipX, tipY, C.prod2);
+
+  game.rodTip.x = tipX;
+  game.rodTip.y = tipY;
+}
+
+function drawDog() {
+  const x = Math.floor(game.dogX);
+  let y = Math.floor(game.dogY);
+
+  if (game.dogState === 'bark' || game.dogState === 'happy') {
+    const jump = Math.abs(Math.sin(game.dogAnim * 0.6)) * 2;
+    y -= jump;
+  }
+
+  if (game.dogState === 'bark' || game.dogState === 'happy') {
+    rect(x+1, 159, 6, 1, 'rgba(0,0,0,0.25)');
+  }
+
+  rect(x+1, y-4, 6, 4, C.dbody);
+  rect(x+2, y-3, 4, 2, C.dbelly);
+  rect(x+5, y-7, 4, 4, C.dbody);
+  rect(x+6, y-6, 2, 2, C.dbelly);
+  rect(x+5, y-9, 1, 2, C.dbody2);
+  rect(x+8, y-9, 1, 2, C.dbody2);
+  px(x+7, y-6, C.dnose);
+  px(x+9, y-5, C.dnose);
+  if ((game.dogState === 'bark' || game.dogState === 'happy') && game.dogBark > 0.2) {
+    rect(x+8, y-4, 1, 1, C.dtongue);
+  }
+  if (game.dogState === 'bark' || game.dogState === 'happy') {
+    rect(x+1, y-1, 1, 1, C.dbody2);
+    rect(x+6, y-1, 1, 1, C.dbody2);
+  } else {
+    rect(x+1, y, 1, 1, C.dbody2);
+    rect(x+6, y, 1, 1, C.dbody2);
+  }
+  const wag = Math.sin(game.dogAnim * 0.7);
+  if (wag > 0) {
+    rect(x-1, y-5, 1, 1, C.dbody);
+    rect(x-2, y-6, 1, 1, C.dbody2);
+  } else {
+    rect(x-1, y-4, 1, 1, C.dbody);
+    rect(x-2, y-3, 1, 1, C.dbody2);
+  }
+  if (game.dogState === 'sad') {
+    rect(x+6, y-5, 2, 1, C.dnose);
+  }
+}
+
+function drawBobberAndLine() {
+  if (game.state === 'minigame' || game.state === 'catch' || game.state === 'miss') return;
+  if (game.shopOpen) return;
+
+  const bx = Math.floor(game.bobber.x);
+  const by = Math.floor(game.bobber.y);
+
+  if (game.state !== 'casting') {
+    drawLine(game.rodTip.x, game.rodTip.y, bx, by, C.line, 1);
+  }
+
+  if (game.state !== 'casting' || game.castT > 0.4) {
+    rect(bx-1, by-1, 3, 3, C.bobber);
+    rect(bx-1, by, 3, 1, C.bobber2);
+    rect(bx, by+2, 1, 1, '#000');
+  }
+}
+
+function drawRipples() {
+  for (const r of game.ripples) {
+    const maxR = r.maxR || 12;
+    const t = 1 - r.life / 50;
+    if (t < 0 || t > 1) continue;
+    const radius = r.r;
+    const segs = Math.floor(radius * 6);
+    for (let i = 0; i < segs; i++) {
+      const a = (i / segs) * Math.PI * 2;
+      const px = Math.floor(r.x + Math.cos(a) * radius);
+      const py = Math.floor(r.y + Math.sin(a) * radius * 0.4);
+      if (px >= 0 && px < W && py >= 100 && py < 145) {
+        ctx.fillStyle = C.water4;
+        ctx.fillRect(px, py, 1, 1);
+      }
+    }
+  }
+}
+
+function drawSplashes() {
+  for (const s of game.splashes) {
+    const t = s.life / 25;
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI;
+      const dist = (1 - t) * 5;
+      const x = Math.floor(s.x + Math.cos(angle) * dist * 2);
+      const y = Math.floor(s.y - Math.sin(angle) * dist);
+      if (x >= 0 && x < W && y >= 100 && y < 150) {
+        px(x, y, C.foam);
+      }
+    }
+  }
+}
+
+function drawBubbles() {
+  for (const b of game.bubbles) {
+    const x = Math.floor(b.x);
+    const y = Math.floor(b.y);
+    if (y < 100) continue;
+    px(x, y, C.water4);
+    if (b.life % 4 < 2) {
+      px(x+1, y, C.water4);
+    }
+  }
+}
+
+function drawLine(x0, y0, x1, y1, color, thickness) {
+  thickness = thickness || 1;
+  x0 = Math.round(x0); y0 = Math.round(y0);
+  x1 = Math.round(x1); y1 = Math.round(y1);
+  const dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+  const dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  let safety = 0;
+  while (safety++ < 200) {
+    rect(x0, y0, thickness, thickness, color);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+  }
+}
+
+function drawBiteAlert() {
+  const x = Math.floor(game.bobber.x);
+  const y = Math.floor(game.bobber.y) - 10;
+  const bounce = Math.floor(Math.sin(game.time * 0.4));
+
+  if (Math.floor(game.time / 3) % 2 === 0) {
+    rect(x-3, y-1, 7, 9, C.ubad);
+  } else {
+    rect(x-3, y-1, 7, 9, '#aa2a2a');
+  }
+  drawText('!', x-1, y+1, C.utext, 1);
+
+  drawText('CLICK!', W/2 - textWidth('CLICK!')/2, H/2 - 10, C.utext, 1);
+}
+
+function drawMinigame() {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+  ctx.fillRect(0, 0, W, H);
+
+  const barX = 280, barY = 30, barW = 20, barH = 110;
+
+  rect(barX-4, barY-4, barW+8, barH+8, C.ubg);
+  rect(barX-4, barY-4, barW+8, 1, C.uborder);
+  rect(barX-4, barY+barH+3, barW+8, 1, C.uborder);
+  rect(barX-4, barY-4, 1, barH+8, C.uborder);
+  rect(barX+barW+3, barY-4, 1, barH+8, C.uborder);
+
+  const fillH = Math.floor((game.catchProgress / 100) * barH);
+  rect(barX, barY+barH-fillH, barW, fillH, C.ugood);
+  if (fillH > 0) {
+    rect(barX, barY+barH-fillH, barW, 1, '#aaffaa');
+  }
+  if (fillH > 2) {
+    for (let y = barY+barH-fillH + 2; y < barY+barH-1; y += 3) {
+      rect(barX, y, barW, 1, '#3acc3a');
+    }
+  }
+
+  const fishYpx = barY + Math.floor(game.fishY * barH);
+  drawFishIcon(barX + barW/2 - 4, fishYpx - 2, game.fish);
+
+  const bobYpx = barY + Math.floor(game.bobberY * barH);
+  rect(barX, bobYpx-1, barW, 3, C.bobber);
+  rect(barX, bobYpx-1, 1, 3, C.bobber2);
+  rect(barX+barW-1, bobYpx-1, 1, 3, C.bobber2);
+  rect(barX, bobYpx-1, 2, 1, C.bobber2);
+  rect(barX+barW-2, bobYpx+1, 2, 1, C.bobber2);
+
+  if (game.fish) {
+    const name = game.fish.name.toUpperCase();
+    const tw = textWidth(name, 1);
+    drawText(name, Math.floor(barX - tw/2), barY - 12, C.utext, 1);
+
+    const starsX = barX - 10;
+    for (let i = 0; i < 5; i++) {
+      const filled = i < game.fish.diff;
+      const color = filled ? C.ugold : C.ubg2;
+      drawText('*', starsX + i * 4, barY + barH + 6, color, 1);
+    }
+  }
+
+  const pText = Math.floor(game.catchProgress) + '%';
+  drawText(pText, barX, barY + barH + 14, C.utext, 1);
+
+  drawText('HOLD MOUSE OR SPACE', W/2 - textWidth('HOLD MOUSE OR SPACE')/2, H - 12, C.utext, 1);
+  drawText('LIFT BOBBER TO CATCH', W/2 - textWidth('LIFT BOBBER TO CATCH')/2, H - 5, C.utext2, 1);
+}
+
+function drawFishIcon(x, y, fish) {
+  if (!fish) return;
+  rect(x, y+1, 6, 2, fish.color);
+  rect(x+1, y, 4, 1, fish.color);
+  rect(x+2, y+3, 2, 1, fish.accent);
+  rect(x-1, y+1, 1, 2, fish.accent);
+  px(x+5, y+1, '#000');
+  px(x+3, y, fish.fin);
+}
+
+function drawCatchDisplay() {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+  ctx.fillRect(0, 0, W, H);
+
+  const px = 60, py = 30, pw = 200, ph = 120;
+  rect(px, py, pw, ph, C.ubg);
+  rect(px, py, pw, 1, C.uborder);
+  rect(px, py+ph-1, pw, 1, C.uborder);
+  rect(px, py, 1, ph, C.uborder);
+  rect(px+pw-1, py, 1, ph, C.uborder);
+  rect(px+3, py+3, pw-6, 1, C.ubg2);
+  rect(px+3, py+ph-4, pw-6, 1, C.ubg2);
+  rect(px+3, py+3, 1, ph-6, C.ubg2);
+  rect(px+pw-4, py+3, 1, ph-6, C.ubg2);
+
+  if (game.catchDisplay && game.catchDisplay.success) {
+    const f = game.catchDisplay.fish;
+    drawText('CAUGHT!', px + pw/2 - textWidth('CAUGHT!')/2, py + 10, C.ugood, 1);
+    const name = f.name.toUpperCase();
+    drawText(name, px + pw/2 - textWidth(name)/2, py + 22, C.utext, 1);
+    drawBigFish(px + pw/2 - 16, py + 36, f);
+    for (let i = 0; i < 5; i++) {
+      const filled = i < f.diff;
+      drawText('*', px + pw/2 - 20 + i * 8, py + 80, filled ? C.ugold : C.ubg2, 1);
+    }
+    drawText('VALUE: $' + f.value, px + pw/2 - textWidth('VALUE: $' + f.value)/2, py + 95, C.ugold, 1);
+  } else {
+    drawText('GOT AWAY!', px + pw/2 - textWidth('GOT AWAY!')/2, py + 30, C.ubad, 1);
+    if (game.catchDisplay && game.catchDisplay.reason) {
+      const reason = game.catchDisplay.reason.toUpperCase();
+      drawText(reason, px + pw/2 - textWidth(reason)/2, py + 50, C.utext2, 1);
+    }
+    if (game.catchDisplay && game.catchDisplay.fish) {
+      const t = 'IT WAS A ' + game.catchDisplay.fish.name.toUpperCase();
+      drawText(t, px + pw/2 - textWidth(t)/2, py + 65, C.utext, 1);
+      drawBigFish(px + pw/2 - 16, py + 75, game.catchDisplay.fish);
+    } else {
+      drawText('TRY AGAIN!', px + pw/2 - textWidth('TRY AGAIN!')/2, py + 75, C.utext, 1);
+    }
+  }
+
+  if (Math.floor(game.catchDisplayTimer / 30) % 2 === 0) {
+    drawText('CLICK TO CONTINUE', px + pw/2 - textWidth('CLICK TO CONTINUE')/2, py + ph - 10, C.utext2, 1);
+  }
+}
+
+function drawBigFish(x, y, fish) {
+  rect(x+2, y+4, 22, 8, fish.color);
+  rect(x+4, y+2, 18, 2, fish.color);
+  rect(x+4, y+12, 18, 2, fish.color);
+  rect(x, y+6, 2, 4, fish.accent);
+  rect(x-1, y+5, 1, 6, fish.accent);
+  rect(x+8, y+1, 4, 1, fish.fin);
+  rect(x+12, y+13, 4, 1, fish.fin);
+  rect(x+18, y+6, 2, 2, '#fff');
+  px(x+19, y+7, '#000');
+  rect(x+22, y+8, 1, 1, fish.accent);
+  if (fish.legendary) {
+    rect(x+8, y+6, 1, 4, fish.accent);
+    rect(x+14, y+6, 1, 4, fish.accent);
+    rect(x+10, y+4, 1, 1, fish.accent);
+    rect(x+16, y+4, 1, 1, fish.accent);
+  }
+}
+
+function drawHUD() {
+  rect(0, 0, W, 11, C.ubg);
+  rect(0, 11, W, 1, C.ubg2);
+
+  drawText('$', 4, 4, C.ugold, 1);
+  drawText(game.money.toString(), 11, 4, C.utext, 1);
+
+  const bname = BAIT[game.baitIndex].name.toUpperCase();
+  drawText(bname, 50, 4, C.utext, 1);
+  drawText('X' + game.baitQty, 50 + textWidth(bname) + 3, 4, C.ugold, 1);
+
+  const cText = 'CATCH:';
+  drawText(cText, 130, 4, C.utext, 1);
+  const cn = game.totalCaught + '/' + FISH.length;
+  drawText(cn, 130 + textWidth(cText) + 3, 4, C.ugood, 1);
+
+  drawText('E: SHOP', 240, 4, C.utext2, 1);
+}
+
+function drawMessage() {
+  const text = game.message.toUpperCase();
+  const tw = textWidth(text, 1);
+  const x = Math.floor(W/2 - tw/2);
+  const y = H - 24;
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(x-4, y-2, tw+8, 9);
+  drawText(text, x, y, C.utext, 1);
+}
+
+function drawShop() {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillRect(0, 0, W, H);
+
+  const px = 25, py = 18, pw = 270, ph = 144;
+  rect(px, py, pw, ph, C.ubg);
+  rect(px, py, pw, 1, C.uborder);
+  rect(px, py+ph-1, pw, 1, C.uborder);
+  rect(px, py, 1, ph, C.uborder);
+  rect(px+pw-1, py, 1, ph, C.uborder);
+  rect(px+3, py+3, pw-6, 1, C.ubg2);
+  rect(px+3, py+ph-4, pw-6, 1, C.ubg2);
+
+  drawText('SHOP', px + 8, py + 6, C.ugold, 1);
+  drawText('$: ' + game.money, px + pw - 45, py + 6, C.utext, 1);
+
+  let y = py + 20;
+  drawText('BAIT (1-3 SWITCHES)', px + 6, y, C.utext2, 1);
+  y += 8;
+  for (let i = 0; i < BAIT.length; i++) {
+    const b = BAIT[i];
+    const selected = i === game.baitIndex;
+    if (selected) {
+      rect(px+5, y-1, pw-10, 11, C.ubg2);
+    }
+    drawText((i+1) + '. ' + b.name.toUpperCase(), px + 10, y, selected ? C.ugold : C.utext, 1);
+    drawText('$' + b.cost, px + 130, y, C.ugold, 1);
+    drawText(b.desc, px + 10, y + 5, C.utext2, 1);
+    y += 13;
+  }
+
+  y += 2;
+  drawText('SELL FISH (PRESS S)', px + 6, y, C.utext2, 1);
+  y += 8;
+  let hasFish = false;
+  for (const fish of FISH) {
+    const count = game.inventory[fish.id] || 0;
+    if (count > 0) {
+      hasFish = true;
+      const t = fish.name.toUpperCase() + ' X' + count + ' = $' + (fish.value * count);
+      drawText(t, px + 10, y, C.utext, 1);
+      drawFishIcon(px + pw - 30, y - 2, fish);
+      y += 8;
+    }
+  }
+  if (!hasFish) {
+    drawText('NO FISH YET', px + 10, y, C.utext2, 1);
+  }
+
+  drawText('E OR ESC TO CLOSE', px + pw/2 - textWidth('E OR ESC TO CLOSE')/2, py + ph - 9, C.utext2, 1);
+}
+
+// ============================================================================
+// MAIN LOOP
+// ============================================================================
+function loop() {
+  update();
+  render();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
