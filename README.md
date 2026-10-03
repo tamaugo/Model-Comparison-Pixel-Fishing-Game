@@ -16,7 +16,7 @@ Each game is scored out of 25 on four things: creativity, design and visuals, en
 |---|---|---|---|---|---|---|---|---|
 | [Grok 4.7 High](games/Grok_-4_7-high.html) | Stillwater | **73** | 19 | 18 | 14 | 22 | 38+ min | $1.22 |
 | [Grok 4.6 High](games/Grok-4_6-high.html) | Willow Pond | **33** | 13 | 7 | 6 | 7 | 5 min | $0.39 |
-| [Luna 6 High](games/6-Luna-medium.html) | Moonwake | **29** | 11 | 4 | 7 | 7 | 2 min | $0.007 |
+| [Luna 6 High](games/6-Luna-high.html) | Moonwake | **29** | 11 | 4 | 7 | 7 | 2 min | $0.007 |
 | [LongCat Preview 2.5](games/Longcar-2_5.html) | Longcar-2.5 Pixel Pond Fishing | **26** | 8 | 8 | 3 | 7 | 21 min | free tier |
 | [MiniMax M3 Thinking](games/MiniMax-M3-Thinking.html) | Pixel Fishing | **5** | 0 | 5 | 0 | 0 | 7 min | $0.06 |
 | [GLM 5.3 High](games/GLM-5_3-high.html) | GONE FISHIN' | **0** | 0 | 0 | 0 | 0 | 27 min | $1.09 |
@@ -62,5 +62,4 @@ python3 scripts/build_slides.py
 
 ## Notes
 
-- The Luna file is named `6-Luna-medium.html`, but the run was logged as Luna 6 High. The file name is left as it was uploaded.
 - The raw OpenCode request log is not included because it contains account and location details.

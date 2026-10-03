@@ -5,7 +5,7 @@
     {
       "id": "luna-6-high",
       "name": "Luna 6 High",
-      "file": "games/6-Luna-medium.html",
+      "file": "games/6-Luna-high.html",
       "game_title": "Moonwake",
       "minutes": 2,
       "scores": { "creativity": 11, "design": 4, "enjoyability": 7, "feature": 7 },
