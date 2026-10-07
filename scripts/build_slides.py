@@ -66,7 +66,7 @@ def slide1():
             open_div = (f'<div style="width:{520-t*px}px;height:24px;flex:none;box-sizing:border-box;border:2px dashed {AMBER};border-left:none;'
                         f'background:repeating-linear-gradient(135deg,rgba(242,177,52,.35) 0,rgba(242,177,52,.35) 4px,transparent 4px,transparent 8px)"></div>')
         label = f"{t}+ min" if open_end else (f"{t} min" if solid else f"~{t} min")
-        rows.append(f"""<div style="position:relative;display:flex;align-items:center;gap:16px;height:40px">
+        rows.append(f"""<div style="position:relative;display:flex;align-items:center;gap:16px;height:36px">
 <div style="width:190px;flex:none;font:600 15px/20px {SANS}">{name}</div>
 <div style="width:520px;flex:none;display:flex;align-items:center"><div style="{bar}"></div>{open_div}</div>
 <div style="width:90px;flex:none;font:500 16px/20px {MONO}">{label}</div>
@@ -84,7 +84,7 @@ def slide1():
     panel = f"""<div style="flex:1;min-width:0;align-self:flex-start;box-sizing:border-box;padding:24px;background:#14263F;border:2px solid #2B3F5E;display:flex;flex-direction:column;gap:20px">
 <div style="font:400 12px/1.6 {PIXEL}">Reference tiers</div>
 <div style="display:flex;flex-direction:column;gap:10px"><div style="font:600 12px/16px {SANS};letter-spacing:1.5px;color:{TEAL}">FRONTIER</div><div style="display:flex;flex-wrap:wrap;gap:8px">{chips(frontier, TEAL)}</div></div>
-<div style="display:flex;flex-direction:column;gap:10px"><div style="font:600 12px/16px {SANS};letter-spacing:1.5px;color:{AMBER}">THIS TEST</div><div style="padding:8px 12px;border:2px dashed {AMBER};font:400 14px/20px {SANS}">The seven models you tested, drawn solid</div></div>
+<div style="display:flex;flex-direction:column;gap:10px"><div style="font:600 12px/16px {SANS};letter-spacing:1.5px;color:{AMBER}">THIS TEST</div><div style="padding:8px 12px;border:2px dashed {AMBER};font:400 14px/20px {SANS}">The eight models you tested, drawn solid</div></div>
 <div style="display:flex;flex-direction:column;gap:10px"><div style="font:600 12px/16px {SANS};letter-spacing:1.5px;color:#9AA9C0">LOWER TIER</div><div style="display:flex;flex-wrap:wrap;gap:8px">{chips(lower, GREY)}</div></div>
 <div style="font:400 13px/18px {SANS};color:#9FB0C6">Reference times are illustrative estimates, drawn hatched.</div>
 </div>"""
@@ -106,7 +106,7 @@ def slide2():
     W, H, TMAX, QMAX = 620, 340, 40, 100
     dirs = {"luna-6-high": "b", "grok-4-6-high": "r", "minimax-m3-thinking": "r",
             "longcat-preview-2-5": "r", "glm-5-3-high": "t", "grok-4-7-high": "l",
-            "haiku-5-5-high-1m": "r"}
+            "haiku-5-5-high-1m": "r", "opus-5-5-high": "t"}
     dots = []
     for m in data["tested"]:
         x = round(m["minutes"] / TMAX * W)
@@ -169,27 +169,29 @@ def slide3():
     W = 720
     items = [(m["name"], m["cost_usd"], "tested", m.get("cost_note")) for m in data["tested"]]
     items += [(f'{r["name"]} (reference)', r["cost_usd"], r["tier"], None) for r in data["references"]]
-    mx = max(c for _, c, _, _ in items)
+    mx = max(c for _, c, _, _ in items if c is not None)
     pw = 10 ** math.floor(math.log10(mx))
     axis_max = next((s * pw for s in (1, 2, 2.5, 5, 10) if s * pw >= mx), pw * 10)
     rows = []
     for name, c, kind, note in items:
         colour = TIER_COLOUR[kind]
-        w = max(6, round(c / axis_max * W)) if c else 6
-        if c:
+        w = 0 if c is None else (max(6, round(c / axis_max * W)) if c else 6)
+        if c is None:
+            label = "not measured"
+        elif c:
             label = ("" if kind == "tested" else "~") + "$" + fmt_cost(c)
         else:
             label = "$0 (free)"
-        rows.append(f"""<div style="position:relative;display:flex;align-items:center;gap:16px;height:40px">
+        rows.append(f"""<div style="position:relative;display:flex;align-items:center;gap:16px;height:36px">
 <div style="width:190px;flex:none;font:600 15px/20px {SANS}">{name}</div>
 <div style="width:{W}px;flex:none;display:flex;align-items:center"><div style="width:{w}px;height:26px;flex:none;background:{colour};box-shadow:4px 4px 0 rgba(0,0,0,.35)"></div></div>
-<div style="width:110px;flex:none;font:500 16px/20px {MONO}">{label}</div></div>""")
+<div style="width:140px;flex:none;font:500 16px/20px {MONO};white-space:nowrap">{label}</div></div>""")
     ticks = "".join(f'<div style="position:absolute;top:0;left:{i*180}px;transform:translateX(-50%);font:500 12px/16px {MONO};color:#9FB0C6">${fmt_cost(axis_max*i/4)}</div>' for i in range(5))
     grid = "".join(f'<div style="position:absolute;top:0;bottom:0;left:{min(i*180,719)}px;width:1px;background:#243756"></div>' for i in range(5))
     body = f"""<div style="display:flex;flex-direction:column;gap:12px;flex:1;min-height:0">
 <div style="display:flex;gap:16px"><div style="width:190px;flex:none"></div><div style="position:relative;width:{W}px;height:20px;flex:none">{ticks}</div></div>
 <div style="position:relative;display:flex;flex-direction:column"><div style="position:absolute;left:206px;top:0;bottom:0;width:{W}px">{grid}</div>{"".join(rows)}</div></div>"""
-    note = ("The first six ran at the same time on OpenCode Go and together used 100% of the 5 hour allowance. Grok 4.7 High alone used about 12% of it. Haiku 5.5 High 1M was run separately afterwards. "
+    note = ("The first six ran at the same time on OpenCode Go and together used 100% of the 5 hour allowance. Grok 4.7 High alone used about 12% of it. Haiku 5.5 High 1M and Opus 5.5 High were run separately afterwards. Opus 5.5 High has no cost bar because its spend was mixed in with other work. "
             "Tested-model costs come from the OpenCode request log. LongCat Preview 2.5 ran on a free tier. "
             "Reference bars are illustrative API-cost estimates, not measured.")
     return slide(header("What each run cost", "Spend for one attempt at the same prompt, in the same order as the time slide.") + body + footer(note, 3))
@@ -260,7 +262,7 @@ landing = f"""<!doctype html>
 <body>
 <main>
 <h1>Model Comparison: Pixel Fishing Game</h1>
-<p>Seven models were given the same one-shot prompt to build a Stardew Valley style fishing game. Open each game below, ranked by my score out of 100.</p>
+<p>Eight models were given the same one-shot prompt to build a Stardew Valley style fishing game. Open each game below, ranked by my score out of 100.</p>
 <a class="slides" href="slides/">View the comparison slides</a>
 <ul>
 {chr(10).join(cards)}

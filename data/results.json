@@ -74,6 +74,18 @@
       "minutes_note": "6 min 49 s",
       "scores": { "creativity": 14, "design": 15, "enjoyability": 10, "feature": 6 },
       "cost_usd": 0.07
+    },
+    {
+      "id": "opus-5-5-high",
+      "name": "Opus 5.5 High",
+      "file": "games/Opus-5_5-high.html",
+      "game_title": "Lakeside Angler",
+      "run_date": "2026-10-07",
+      "minutes": 27,
+      "minutes_note": "27 min 26 s",
+      "scores": { "creativity": 19, "design": 23, "enjoyability": 19, "feature": 19 },
+      "cost_usd": null,
+      "cost_note": "not measured, Opus 5.5 was in use for other tasks at the same time"
     }
   ],
   "references": [
