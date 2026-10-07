@@ -84,7 +84,7 @@ def slide1():
     panel = f"""<div style="flex:1;min-width:0;align-self:flex-start;box-sizing:border-box;padding:24px;background:#14263F;border:2px solid #2B3F5E;display:flex;flex-direction:column;gap:20px">
 <div style="font:400 12px/1.6 {PIXEL}">Reference tiers</div>
 <div style="display:flex;flex-direction:column;gap:10px"><div style="font:600 12px/16px {SANS};letter-spacing:1.5px;color:{TEAL}">FRONTIER</div><div style="display:flex;flex-wrap:wrap;gap:8px">{chips(frontier, TEAL)}</div></div>
-<div style="display:flex;flex-direction:column;gap:10px"><div style="font:600 12px/16px {SANS};letter-spacing:1.5px;color:{AMBER}">THIS TEST</div><div style="padding:8px 12px;border:2px dashed {AMBER};font:400 14px/20px {SANS}">The six models you tested, drawn solid</div></div>
+<div style="display:flex;flex-direction:column;gap:10px"><div style="font:600 12px/16px {SANS};letter-spacing:1.5px;color:{AMBER}">THIS TEST</div><div style="padding:8px 12px;border:2px dashed {AMBER};font:400 14px/20px {SANS}">The seven models you tested, drawn solid</div></div>
 <div style="display:flex;flex-direction:column;gap:10px"><div style="font:600 12px/16px {SANS};letter-spacing:1.5px;color:#9AA9C0">LOWER TIER</div><div style="display:flex;flex-wrap:wrap;gap:8px">{chips(lower, GREY)}</div></div>
 <div style="font:400 13px/18px {SANS};color:#9FB0C6">Reference times are illustrative estimates, drawn hatched.</div>
 </div>"""
@@ -105,7 +105,8 @@ def slide1():
 def slide2():
     W, H, TMAX, QMAX = 620, 340, 40, 100
     dirs = {"luna-6-high": "b", "grok-4-6-high": "r", "minimax-m3-thinking": "r",
-            "longcat-preview-2-5": "r", "glm-5-3-high": "t", "grok-4-7-high": "l"}
+            "longcat-preview-2-5": "r", "glm-5-3-high": "t", "grok-4-7-high": "l",
+            "haiku-5-5-high-1m": "r"}
     dots = []
     for m in data["tested"]:
         x = round(m["minutes"] / TMAX * W)
@@ -179,7 +180,7 @@ def slide3():
             label = ("" if kind == "tested" else "~") + "$" + fmt_cost(c)
         else:
             label = "$0 (free)"
-        rows.append(f"""<div style="position:relative;display:flex;align-items:center;gap:16px;height:46px">
+        rows.append(f"""<div style="position:relative;display:flex;align-items:center;gap:16px;height:40px">
 <div style="width:190px;flex:none;font:600 15px/20px {SANS}">{name}</div>
 <div style="width:{W}px;flex:none;display:flex;align-items:center"><div style="width:{w}px;height:26px;flex:none;background:{colour};box-shadow:4px 4px 0 rgba(0,0,0,.35)"></div></div>
 <div style="width:110px;flex:none;font:500 16px/20px {MONO}">{label}</div></div>""")
@@ -188,7 +189,7 @@ def slide3():
     body = f"""<div style="display:flex;flex-direction:column;gap:12px;flex:1;min-height:0">
 <div style="display:flex;gap:16px"><div style="width:190px;flex:none"></div><div style="position:relative;width:{W}px;height:20px;flex:none">{ticks}</div></div>
 <div style="position:relative;display:flex;flex-direction:column"><div style="position:absolute;left:206px;top:0;bottom:0;width:{W}px">{grid}</div>{"".join(rows)}</div></div>"""
-    note = ("All six ran at the same time on OpenCode Go and together used 100% of the 5 hour allowance. Grok 4.7 High alone used about 12% of it. "
+    note = ("The first six ran at the same time on OpenCode Go and together used 100% of the 5 hour allowance. Grok 4.7 High alone used about 12% of it. Haiku 5.5 High 1M was run separately afterwards. "
             "Tested-model costs come from the OpenCode request log. LongCat Preview 2.5 ran on a free tier. "
             "Reference bars are illustrative API-cost estimates, not measured.")
     return slide(header("What each run cost", "Spend for one attempt at the same prompt, in the same order as the time slide.") + body + footer(note, 3))
@@ -259,7 +260,7 @@ landing = f"""<!doctype html>
 <body>
 <main>
 <h1>Model Comparison: Pixel Fishing Game</h1>
-<p>Six models were given the same one-shot prompt to build a Stardew Valley style fishing game. Open each game below, ranked by my score out of 100.</p>
+<p>Seven models were given the same one-shot prompt to build a Stardew Valley style fishing game. Open each game below, ranked by my score out of 100.</p>
 <a class="slides" href="slides/">View the comparison slides</a>
 <ul>
 {chr(10).join(cards)}

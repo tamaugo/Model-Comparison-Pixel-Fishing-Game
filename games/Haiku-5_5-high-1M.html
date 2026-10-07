@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pixel Pond - 8-bit Fishing</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1a1c2c; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    cursor: pointer;
+    user-select: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="game" width="320" height="180"></canvas>
+<script>
+(() => {
+'use strict';
+
+// ---------- Canvas setup ----------
+const W = 320, H = 180;
+const canvas = document.getElementById('game');
+let ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+// Integer scaling where possible, so pixels stay crisp
+function fitCanvas() {
+  const s = Math.min(innerWidth / W, innerHeight / H);
+  const k = s >= 1 ? Math.floor(s) : s;
+  canvas.style.width = (W * k) + 'px';
+  canvas.style.height = (H * k) + 'px';
+}
+addEventListener('resize', fitCanvas);
+fitCanvas();
+
+// ---------- Helpers ----------
+const rnd = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, k) => a + (b - a) * k;
+const hash = (x, y) => (Math.imul(x, 73856093) ^ Math.imul(y, 19349663)) >>> 0;
+
+// PICO-8 inspired 16-colour palette
+const PAL = ['#1a1c2c','#5d275d','#b13e53','#ef7d57','#ffcd75','#a7f070','#38b764','#257179',
+             '#29366f','#3b5dc9','#41a6f6','#73eff7','#f4f4f4','#94b0c2','#566c86','#333c57'];
+const C = { ink:0, plum:1, red:2, orange:3, yellow:4, lime:5, green:6, teal:7, navy:8,
+            blue:9, sky:10, aqua:11, white:12, grey:13, slate:14, dusk:15 };
+
+// 3x5 pixel font
+const FONT_DATA = {
+  ' ':'000/000/000/000/000', 'A':'010/101/111/101/101', 'B':'110/101/110/101/110',
+  'C':'011/100/100/100/011', 'D':'110/101/101/101/110', 'E':'111/100/110/100/111',
+  'F':'111/100/110/100/100', 'G':'011/100/101/101/011', 'H':'101/101/111/101/101',
+  'I':'111/010/010/010/111', 'J':'001/001/001/101/010', 'K':'101/101/110/101/101',
+  'L':'100/100/100/100/111', 'M':'101/111/111/101/101', 'N':'110/101/101/101/101',
+  'O':'010/101/101/101/010', 'P':'110/101/110/100/100', 'Q':'010/101/101/110/011',
+  'R':'110/101/110/101/101', 'S':'011/100/010/001/110', 'T':'111/010/010/010/010',
+  'U':'101/101/101/101/111', 'V':'101/101/101/101/010', 'W':'101/101/111/111/101',
+  'X':'101/101/010/101/101', 'Y':'101/101/010/010/010', 'Z':'111/001/010/100/111',
+  '0':'111/101/101/101/111', '1':'010/110/010/010/111', '2':'110/001/010/100/111',
+  '3':'110/001/010/001/110', '4':'101/101/111/001/001', '5':'111/100/110/001/110',
+  '6':'011/100/110/101/010', '7':'111/001/010/010/010', '8':'010/101/010/101/010',
+  '9':'010/101/011/001/110', '!':'010/010/010/000/010', '.':'000/000/000/000/010',
+  ',':'000/000/000/010/100', ':':'000/010/000/010/000', '-':'000/000/111/000/000',
+  '+':'000/010/111/010/000', '/':'001/001/010/100/100', '?':'110/001/010/000/010',
+  '(':'010/100/100/100/010', ')':'010/001/001/001/010', '%':'101/001/010/100/101',
+  '$':'011/110/010/011/110', '\'':'010/010/000/000/000',
+};
+const GLYPH = {};
+for (const k in FONT_DATA) GLYPH[k] = FONT_DATA[k].split('/').map(r => [...r].map(ch => ch === '1'));
+
+function text(str, x, y, col = C.white) {
+  str = String(str).toUpperCase();
+  ctx.fillStyle = PAL[col];
+  for (let i = 0; i < str.length; i++) {
+    const g = GLYPH[str[i]] || GLYPH[' '];
+    const gx = x + i * 4;
+    for (let r = 0; r < 5; r++) for (let c = 0; c < 3; c++) if (g[r][c]) ctx.fillRect(gx + c, y + r, 1, 1);
+  }
+}
+const textW = s => String(s).length * 4 - 1;
+const textC = (s, cx, y, col) => text(s, Math.round(cx - textW(s) / 2), y, col);
+
+const rect = (x, y, w, h, c) => {
+  ctx.fillStyle = PAL[c];
+  ctx.fillRect(Math.round(x), Math.round(y), w, h);
+};
+function disc(cx, cy, r, c) {
+  ctx.fillStyle = PAL[c];
+  for (let dy = -r; dy <= r; dy++) {
+    const hw = Math.floor(Math.sqrt(r * r - dy * dy));
+    ctx.fillRect(cx - hw, cy + dy, hw * 2 + 1, 1);
+  }
+}
+function ellipse(cx, cy, rx, ry, c) {
+  ctx.fillStyle = PAL[c];
+  for (let dy = -ry; dy <= ry; dy++) {
+    const hw = Math.floor(rx * Math.sqrt(Math.max(0, 1 - (dy * dy) / (ry * ry))));
+    ctx.fillRect(cx - hw, cy + dy, hw * 2 + 1, 1);
+  }
+}
+function ring(cx, cy, rx, ry, c) {
+  ctx.fillStyle = PAL[c];
+  for (let i = 0; i < 64; i++) {
+    const a = i / 64 * Math.PI * 2;
+    ctx.fillRect(Math.round(cx + Math.cos(a) * rx), Math.round(cy + Math.sin(a) * ry), 1, 1);
+  }
+}
+function line(x0, y0, x1, y1, c) {
+  ctx.fillStyle = PAL[c];
+  const dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+  const dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  for (;;) {
+    ctx.fillRect(x0, y0, 1, 1);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+  }
+}
+
+// ---------- Fish data ----------
+// speed: track-lengths per second | retarget: seconds between swim targets
+// dart: chance per second of a sudden lunge | bar: catch-zone height (fraction of track)
+// fill / drain: meter gain while inside the zone / loss while outside
+const TIERS = {
+  Easy:      { col: C.lime,   hook: 1.2 },
+  Medium:    { col: C.yellow, hook: 1.0 },
+  Hard:      { col: C.red,    hook: 0.85 },
+  Legendary: { col: C.aqua,   hook: 0.7 },
+};
+
+const SPECIES = [
+  { name:'Minnow',     tier:'Easy',      weight:26,  value:5,   w:12, h:7,
+    body:C.grey,   belly:C.white,  back:C.slate, fin:C.grey,   pattern:'plain',
+    speed:0.35, retarget:[0.8,1.6], dart:0,    bar:0.34, fill:0.45, drain:0.25 },
+  { name:'Bluegill',   tier:'Easy',      weight:20,  value:9,   w:14, h:9,
+    body:C.sky,    belly:C.yellow, back:C.navy, fin:C.navy,   pattern:'stripes', pc:C.navy,
+    speed:0.40, retarget:[0.6,1.2], dart:0.05, bar:0.32, fill:0.42, drain:0.26 },
+  { name:'Perch',      tier:'Medium',    weight:14,  value:18,  w:14, h:8,
+    body:C.yellow, belly:C.white,  back:C.green, fin:C.red,    pattern:'stripes', pc:C.ink,
+    speed:0.55, retarget:[0.5,1.1], dart:0.10, bar:0.27, fill:0.35, drain:0.30 },
+  { name:'Carp',       tier:'Medium',    weight:12,  value:22,  w:16, h:10,
+    body:C.orange, belly:C.yellow, back:C.plum,  fin:C.orange, pattern:'spots', pc:C.red,
+    speed:0.45, retarget:[1.0,2.0], dart:0.05, bar:0.30, fill:0.33, drain:0.30 },
+  { name:'Trout',      tier:'Medium',    weight:10,  value:26,  w:14, h:8,
+    body:C.slate,  belly:C.white,  back:C.teal,  fin:C.slate,  pattern:'spots', pc:C.red,
+    speed:0.60, retarget:[0.5,1.0], dart:0.15, bar:0.26, fill:0.33, drain:0.32 },
+  { name:'Pike',       tier:'Hard',      weight:6,   value:45,  w:18, h:7, elong:true,
+    body:C.teal,   belly:C.grey,   back:C.green, fin:C.green,  pattern:'stripes', pc:C.lime,
+    speed:0.90, retarget:[0.3,0.7], dart:0.35, bar:0.22, fill:0.30, drain:0.38 },
+  { name:'Catfish',    tier:'Hard',      weight:5,   value:55,  w:16, h:11,
+    body:C.slate,  belly:C.grey,   back:C.dusk,  fin:C.dusk,   pattern:'plain',
+    speed:0.70, retarget:[0.6,1.4], dart:0.20, bar:0.20, fill:0.28, drain:0.40 },
+  { name:'Eel',        tier:'Hard',      weight:4,   value:60,  w:18, h:6, elong:true, wave:true,
+    body:C.dusk,   belly:C.slate,  back:C.plum,  fin:C.plum,   pattern:'plain',
+    speed:1.00, retarget:[0.2,0.5], dart:0.50, bar:0.21, fill:0.28, drain:0.42 },
+  { name:'Golden Koi', tier:'Legendary', weight:1.2, value:150, w:18, h:11,
+    body:C.yellow, belly:C.white,  back:C.orange, fin:C.orange, pattern:'patch', pc:C.red,
+    speed:1.20, retarget:[0.2,0.4], dart:0.60, bar:0.15, fill:0.36, drain:0.40 },
+  { name:'Moon Ray',   tier:'Legendary', weight:0.6, value:220, w:18, h:11, flat:true,
+    body:C.aqua,   belly:C.white,  back:C.blue,  fin:C.sky,    pattern:'spots', pc:C.white,
+    speed:1.40, retarget:[0.15,0.35], dart:0.70, bar:0.13, fill:0.36, drain:0.40 },
+];
+const TOTAL_WEIGHT = SPECIES.reduce((s, f) => s + f.weight, 0);
+
+// Procedurally paints each fish into its own small canvas (facing left)
+function makeSprite(sp) {
+  const w = sp.w, h = sp.h;
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const g = cv.getContext('2d');
+  const cx = w * 0.45, rx = w * 0.40, cy0 = h / 2;
+  const ry = h * (sp.elong ? 0.26 : sp.flat ? 0.30 : 0.38);
+  const tailX = Math.round(w * 0.76);
+  const dorsalTop = Math.floor(cy0 - ry);
+  const cyAt = x => cy0 + (sp.wave ? Math.sin(x * 0.9) * 0.9 : 0);
+  const inBody = (x, y) => {
+    const dx = (x + 0.5 - cx) / rx, dy = (y + 0.5 - cyAt(x)) / ry;
+    return dx * dx + dy * dy <= 1;
+  };
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let col = -1;
+      if (x >= tailX) {
+        const half = (x - tailX + 1) / (w - tailX) * h * 0.42;
+        const d = Math.abs(y + 0.5 - cy0);
+        if (d <= half) col = d > half - 1 ? C.ink : sp.fin;
+      }
+      if (col === -1 && x >= Math.round(cx - rx * 0.2) && x <= Math.round(cx + rx * 0.4)
+          && y <= dorsalTop && y >= dorsalTop - 2) col = sp.fin;
+      if (inBody(x, y)) {
+        const edge = !inBody(x - 1, y) || !inBody(x + 1, y) || !inBody(x, y - 1) || !inBody(x, y + 1);
+        const rel = (y + 0.5 - cyAt(x)) / ry;
+        col = edge ? C.ink : rel > 0.35 ? sp.belly : rel < -0.4 ? sp.back : sp.body;
+        if (!edge) {
+          if (sp.pattern === 'stripes' && x % 4 === 1) col = sp.pc;
+          if (sp.pattern === 'spots' && hash(x, y) % 7 === 0) col = sp.pc;
+          if (sp.pattern === 'patch' && Math.hypot(x + 0.5 - w * 0.55, y + 0.5 - cy0) < h * 0.3) col = sp.pc;
+        }
+      }
+      if (col >= 0) { g.fillStyle = PAL[col]; g.fillRect(x, y, 1, 1); }
+    }
+  }
+  const ex = Math.round(cx - rx * 0.5), ey = Math.round(cy0 - ry * 0.3);
+  g.fillStyle = PAL[C.white]; g.fillRect(ex, ey, 1, 1);
+  g.fillStyle = PAL[C.ink];   g.fillRect(ex - 1, ey, 1, 1);
+  return cv;
+}
+SPECIES.forEach(sp => { sp.img = makeSprite(sp); });
+
+// ---------- Scenery data ----------
+const edgeX = y => 62 + Math.round(Math.sin(y * 0.25) * 2);   // wobbly shoreline
+const clouds = [{ x: 20, y: 14, s: 1 }, { x: 150, y: 22, s: 0.7 }, { x: 250, y: 11, s: 1.2 }];
+const shimmer = Array.from({ length: 26 }, () => ({
+  x: rnd(64, W), y: Math.round(rnd(96, 164)), len: 2 + Math.floor(rnd(0, 4)),
+  sp: rnd(3, 8), col: Math.random() < 0.5 ? C.aqua : C.sky,
+}));
+const lilies = [{ x: 150, y: 130, ph: 0 }, { x: 205, y: 147, ph: 2 }, { x: 272, y: 124, ph: 4 }];
+let bgCv = null;
+
+function buildBackground() {
+  bgCv = document.createElement('canvas');
+  bgCv.width = W; bgCv.height = H;
+  const main = ctx;
+  ctx = bgCv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  // Sky
+  rect(0, 0, W, 62, C.sky);
+
+  // Far bank hills
+  for (let x = 0; x < W; x++) {
+    const top = 56 - Math.round(Math.sin(x * 0.045) * 3 + Math.sin(x * 0.12) * 1.5);
+    rect(x, top, 1, 92 - top, C.green);
+    rect(x, top, 1, 1, C.lime);
+  }
+  // Trees on the far bank
+  [[246, 46, 10], [266, 40, 13], [290, 48, 11], [310, 42, 12], [226, 54, 8]].forEach(([x, y, r]) => {
+    rect(x - 1, y + r - 3, 2, 8, C.plum);
+    disc(x, y, r, C.green);
+    disc(x - 2, y - 3, Math.max(2, r >> 2), C.lime);
+  });
+
+  // Ground on the player's side
+  for (let y = 92; y < H; y++) {
+    const ex = edgeX(y);
+    rect(0, y, ex - 3, 1, C.green);
+    rect(ex - 3, y, 3, 1, C.yellow);                       // sand shore
+    rect(ex, y, W - ex, 1, y < 130 ? C.blue : C.navy);     // water, deeper lower down
+  }
+  // Grass texture
+  for (let y = 93; y < H; y++) {
+    for (let x = 0; x < edgeX(y) - 3; x++) {
+      const h = hash(x, y) % 100;
+      if (h < 4) rect(x, y, 1, 1, C.lime);
+      else if (h < 6 && y > 110) rect(x, y, 2, 1, C.teal);
+      else if (h === 99) rect(x, y, 1, 1, C.white);
+    }
+  }
+  // Bush by the player
+  disc(6, 88, 4, C.green);
+  disc(11, 86, 3, C.lime);
+
+  // Reeds along the shore
+  for (let y = 96; y < 122; y += 3) {
+    const ex = edgeX(y);
+    rect(ex - 6, y - 4, 1, 7, C.green);
+    rect(ex - 5, y - 6, 1, 8, C.lime);
+  }
+
+  // Wooden dock
+  rect(50, 110, 44, 5, C.orange);
+  rect(50, 110, 44, 1, C.yellow);
+  for (let x = 50; x < 94; x += 4) rect(x, 110, 1, 5, C.plum);
+  rect(52, 115, 2, 5, C.plum);
+  rect(88, 115, 2, 5, C.plum);
+
+  // Rocks in the pond
+  disc(250, 150, 5, C.slate);
+  disc(250, 148, 3, C.grey);
+  rect(248, 147, 2, 1, C.white);
+  disc(120, 164, 3, C.slate);
+  disc(186, 126, 2, C.grey);
+
+  ctx = main;
+  return bgCv;
+}
+
+// ---------- Game state ----------
+const S = { IDLE: 0, CHARGE: 1, FLY: 2, WAIT: 3, BITE: 4, REEL: 5, CAUGHT: 6, ESCAPE: 7 };
+let state = S.IDLE;
+let t = 0;
+let power = 0;
+let flight = null;
+const bob = { x: 0, y: 0 };
+let waitT = 0, rippleT = 0, biteT = 0, escapeT = 0, holding = false;
+let fish = null, reel = null, caught = null;
+let basket = [], coins = 0, catches = 0;
+const counts = SPECIES.map(() => 0);
+let msg = '', msgT = 0, msgCol = C.white;
+let ripples = [];
+const TRK = { x: 278, y: 24, w: 26, h: 134 };
+
+// Dog companion
+const dog = { x: 34, y: 112, pose: 'sit', poseT: 0, say: '', sayT: 0, t: 0, lift: 0 };
+function react(pose, secs, say) {
+  dog.pose = pose; dog.poseT = secs;
+  dog.say = say; dog.sayT = secs;
+}
+function updateDog(dt) {
+  dog.t += dt;
+  if (dog.poseT > 0) { dog.poseT -= dt; if (dog.poseT <= 0) dog.pose = 'sit'; }
+  if (dog.sayT > 0) dog.sayT -= dt;
+  dog.lift = dog.pose === 'jump' ? Math.abs(Math.sin(dog.t * 10)) * 6
+           : dog.pose === 'happy' ? Math.abs(Math.sin(dog.t * 8)) * 2 : 0;
+}
+
+// Audio (tiny square-wave blips, no assets)
+let audio = null;
+function beep(freq, dur, type = 'square', vol = 0.05) {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = type; o.frequency.value = freq; g.gain.value = vol;
+    o.connect(g); g.connect(audio.destination);
+    o.start(); o.stop(audio.currentTime + dur);
+  } catch (e) { /* audio is optional */ }
+}
+
+function showMsg(text, col, secs) { msg = text; msgCol = col; msgT = secs; }
+function spawnRipple(x, y) { ripples.push({ x, y, life: 0 }); }
+
+function pickFish() {
+  let r = Math.random() * TOTAL_WEIGHT;
+  for (const f of SPECIES) { r -= f.weight; if (r <= 0) return f; }
+  return SPECIES[0];
+}
+
+function rodTip() {
+  if (state === S.CHARGE) return { x: 38, y: 88 };
+  if (state === S.REEL) return { x: 44, y: 90 };
+  return { x: 48, y: 82 };
+}
+
+// ---------- Actions ----------
+function press() {
+  switch (state) {
+    case S.IDLE:   state = S.CHARGE; power = 0; break;
+    case S.WAIT:   reelIn(); break;
+    case S.BITE:   startReel(); break;
+    case S.REEL:   holding = true; break;
+    case S.CAUGHT: closeCard(); break;
+  }
+}
+function release() {
+  holding = false;
+  if (state === S.CHARGE) throwLine();
+}
+
+function throwLine() {
+  const tip = rodTip();
+  flight = { x0: tip.x, y0: tip.y, x1: Math.round(112 + power * 186),
+             y1: Math.round(118 + Math.random() * 38), t: 0, dur: 0.55 };
+  bob.x = tip.x; bob.y = tip.y;
+  state = S.FLY;
+  react('watch', 1.0, 'WOOF!');
+  beep(520, 0.08, 'triangle', 0.05);
+}
+
+function reelIn() {
+  state = S.IDLE;
+  showMsg('LINE REELED IN', C.grey, 1);
+}
+
+function startBite() {
+  fish = pickFish();
+  state = S.BITE;
+  biteT = TIERS[fish.tier].hook;
+  spawnRipple(bob.x, bob.y);
+  react('jump', 0.6, '!');
+  beep(990, 0.12, 'square', 0.05);
+}
+
+function startReel() {
+  reel = { p: 0.5, tgt: 0.5, timer: 0, top: (1 - fish.bar) / 2, vel: 0,
+           bf: fish.bar, prog: 0.3, inside: false };
+  state = S.REEL;
+  holding = true;
+  react('watch', 0.9, 'ARF!');
+}
+
+function updateReel(dt) {
+  const r = reel, f = fish;
+
+  // Catch bar: holding lifts it, releasing lets it drop
+  r.vel = clamp(r.vel + (holding ? -4.2 : 3.4) * dt, -1.6, 1.6);
+  r.top += r.vel * dt;
+  if (r.top < 0) { r.top = 0; r.vel = 0; }
+  if (r.top > 1 - r.bf) { r.top = 1 - r.bf; r.vel = 0; }
+
+  // Fish movement: swims to targets; erratic species lunge often
+  r.timer -= dt;
+  if (r.timer <= 0) { r.tgt = rnd(0.04, 0.96); r.timer = rnd(f.retarget[0], f.retarget[1]); }
+  if (Math.random() < f.dart * dt) { r.tgt = rnd(0.04, 0.96); r.timer = rnd(0.12, 0.3); }
+  const gap = r.tgt - r.p;
+  r.p += Math.sign(gap) * Math.min(Math.abs(gap), f.speed * dt * rnd(0.7, 1.3));
+
+  // Progress meter
+  r.inside = r.p >= r.top && r.p <= r.top + r.bf;
+  r.prog = clamp(r.prog + (r.inside ? f.fill : -f.drain) * dt, 0, 1);
+  if (r.prog >= 1) catchFish();
+  else if (r.prog <= 0) lose('THE FISH GOT AWAY!');
+}
+
+function catchFish() {
+  const f = fish, idx = SPECIES.indexOf(f);
+  basket.push(idx);
+  counts[idx]++;
+  catches++;
+  caught = f;
+  fish = null; reel = null; holding = false;
+  state = S.CAUGHT;
+  react('happy', 1.6, f.tier === 'Legendary' ? 'WOW!!' : 'YAY!');
+  beep(660, 0.12, 'square', 0.05);
+  setTimeout(() => beep(990, 0.18, 'square', 0.05), 120);
+}
+
+function lose(text) {
+  state = S.ESCAPE; escapeT = 1.6;
+  fish = null; reel = null; holding = false;
+  spawnRipple(bob.x, bob.y);
+  react('sad', 1.6, 'AW...');
+  showMsg(text, C.red, 1.8);
+  beep(180, 0.3, 'sawtooth', 0.04);
+}
+
+function closeCard() {
+  state = S.IDLE;
+  caught = null;
+}
+
+function sell() {
+  if (state !== S.IDLE && state !== S.WAIT) return;
+  if (!basket.length) { showMsg('BASKET IS EMPTY', C.grey, 1.4); return; }
+  const total = basket.reduce((s, i) => s + SPECIES[i].value, 0);
+  coins += total;
+  showMsg('SOLD ' + basket.length + ' FOR ' + total + 'G', C.lime, 2);
+  basket = [];
+  react('happy', 1.0, 'SOLD!');
+  beep(784, 0.1, 'triangle', 0.06);
+}
+
+// ---------- Input ----------
+addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) press(); }
+  else if (e.code === 'KeyS' && !e.repeat) sell();
+});
+addEventListener('keyup', e => { if (e.code === 'Space') { e.preventDefault(); release(); } });
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); press(); });
+addEventListener('pointerup', release);
+addEventListener('blur', release);
+
+// ---------- Update ----------
+function update(dt) {
+  t += dt;
+  for (const c of clouds) { c.x += c.s * 3 * dt; if (c.x > W + 20) c.x = -20; }
+  for (const r of ripples) r.life += dt / 1.1;
+  ripples = ripples.filter(r => r.life < 1);
+  if (msgT > 0) msgT -= dt;
+  updateDog(dt);
+
+  switch (state) {
+    case S.CHARGE:
+      power = Math.min(1, power + dt * 1.1);
+      break;
+    case S.FLY: {
+      flight.t += dt;
+      const k = Math.min(1, flight.t / flight.dur);
+      bob.x = lerp(flight.x0, flight.x1, k);
+      bob.y = lerp(flight.y0, flight.y1, k) - Math.sin(k * Math.PI) * 30;
+      if (k >= 1) {
+        bob.x = flight.x1; bob.y = flight.y1;
+        spawnRipple(bob.x, bob.y);
+        state = S.WAIT; waitT = rnd(1.8, 4.5); rippleT = 1.2;
+      }
+      break;
+    }
+    case S.WAIT:
+      waitT -= dt; rippleT -= dt;
+      if (rippleT <= 0) { spawnRipple(bob.x, bob.y); rippleT = 1.2; }
+      if (waitT <= 0) startBite();
+      break;
+    case S.BITE:
+      biteT -= dt;
+      if (biteT <= 0) lose('IT GOT AWAY...');
+      break;
+    case S.REEL:
+      updateReel(dt);
+      break;
+    case S.ESCAPE:
+      escapeT -= dt;
+      if (escapeT <= 0) state = S.IDLE;
+      break;
+  }
+}
+
+// ---------- Drawing ----------
+function drawClouds() {
+  for (const c of clouds) {
+    const x = Math.round(c.x), y = c.y;
+    disc(x, y, 4, C.white);
+    disc(x + 5, y - 2, 5, C.white);
+    disc(x + 11, y, 4, C.white);
+    rect(x - 3, y + 4, 19, 1, C.sky);
+  }
+}
+
+function drawShimmer() {
+  for (const s of shimmer) {
+    const x = 64 + ((s.x - 64 + t * s.sp) % (W - 64));
+    if (x >= 50 && x <= 96 && s.y >= 106 && s.y <= 117) continue; // keep dock clean
+    rect(x, s.y, s.len, 1, s.col);
+  }
+}
+
+function drawLilies() {
+  for (const l of lilies) {
+    const x = Math.round(l.x + Math.sin(t * 0.4 + l.ph) * 2);
+    ellipse(x, l.y, 4, 2, C.green);
+    rect(x - 1, l.y - 1, 2, 1, C.lime);
+  }
+}
+
+function drawRipples() {
+  for (const r of ripples) {
+    const rad = 2 + r.life * 9;
+    ring(Math.round(r.x), Math.round(r.y), Math.round(rad), Math.max(1, Math.round(rad * 0.35)),
+         r.life < 0.6 ? C.aqua : C.sky);
+  }
+}
+
+function drawPlayer() {
+  const x = 16, y = 92;
+  rect(x + 3, y + 14, 2, 6, C.plum);    // legs
+  rect(x + 7, y + 14, 2, 6, C.plum);
+  rect(x + 2, y + 8, 8, 7, C.blue);     // shirt
+  rect(x + 3, y + 1, 6, 6, C.yellow);   // face
+  rect(x + 2, y, 8, 2, C.red);          // cap
+  rect(x + 7, y + 4, 1, 1, C.ink);      // eye
+
+  const hand = state === S.CHARGE ? { x: 21, y: 100 } : { x: 26, y: 101 };
+  const tip = rodTip();
+  line(hand.x, hand.y, tip.x, tip.y, C.ink);
+  rect(hand.x - 1, hand.y - 1, 2, 2, C.yellow);
+}
+
+function drawDog() {
+  const d = dog, F = C.orange, Y = C.yellow, K = C.ink, R = C.plum;
+  const x = Math.round(d.x), y = Math.round(d.y) - 10 - Math.round(d.lift);
+  const sad = d.pose === 'sad';
+  const up = d.pose === 'watch' || d.pose === 'jump' || d.pose === 'happy';
+  const wag = Math.floor(d.t * (d.pose === 'happy' ? 14 : 5)) % 2;
+  const hy = sad ? y + 3 : y;
+  rect(x, y + 2 - wag, 2, 2, F);            // tail
+  rect(x + 2, y + 3, 9, 5, F);              // body
+  rect(x + 2, y + 6, 9, 1, Y);              // chest
+  rect(x + 3, y + 8, 2, up ? 3 : 2, F);     // back leg
+  rect(x + 9, y + 8, 2, up ? 3 : 2, F);     // front leg
+  rect(x + 9, hy, 5, 5, F);                 // head
+  rect(x + 9, hy + 1, 2, 3, R);             // ear
+  rect(x + 13, hy + 2, 1, 1, K);            // nose
+  if (sad) rect(x + 11, hy + 2, 2, 1, K);   // closed, sad eye
+  else rect(x + 11, hy + 1, 1, 1, K);       // open eye
+}
+
+function drawBubble() {
+  if (dog.sayT <= 0 || !dog.say) return;
+  const w = textW(dog.say) + 4;
+  const x = Math.min(W - w - 2, Math.round(dog.x) + 10);
+  const y = Math.round(dog.y) - 26 - Math.round(dog.lift);
+  rect(x, y, w, 9, C.white);
+  rect(x + 3, y + 9, 2, 2, C.white);
+  text(dog.say, x + 2, y + 2, C.ink);
+}
+
+function drawLineAndBobber() {
+  if (state === S.IDLE || state === S.ESCAPE || state === S.CHARGE) return;
+  const tip = rodTip();
+  let by = bob.y;
+  if (state === S.WAIT) by += Math.sin(t * 3) * 0.6;
+  if (state === S.BITE) by += 3 + Math.sin(t * 40) * 0.6;
+  const bx = Math.round(bob.x), byr = Math.round(by);
+  line(tip.x, tip.y, bx, byr - 1, C.white);
+  rect(bx - 1, byr - 1, 3, 2, C.red);
+  rect(bx - 1, byr + 1, 3, 1, C.white);
+  if (state === S.BITE && Math.floor(t * 6) % 2 === 0) {
+    rect(bx - 1, byr - 12, 2, 6, C.red);
+    rect(bx - 1, byr - 5, 2, 2, C.red);
+  }
+}
+
+function drawCharge() {
+  if (state !== S.CHARGE) return;
+  text('POWER', 10, 124, C.white);
+  rect(9, 131, 64, 7, C.ink);
+  const w = Math.round(power * 62);
+  rect(10, 132, w, 5, power < 0.5 ? C.lime : power < 0.8 ? C.yellow : C.red);
+}
+
+function drawFish(f, x, y, flip = false, scale = 1) {
+  const w = f.img.width * scale, h = f.img.height * scale;
+  ctx.save();
+  if (flip) {
+    ctx.translate(x + w, y);
+    ctx.scale(-1, 1);
+    ctx.drawImage(f.img, 0, 0, w, h);
+  } else {
+    ctx.drawImage(f.img, Math.round(x), Math.round(y), w, h);
+  }
+  ctx.restore();
+}
+
+function drawReel() {
+  const r = reel, f = fish, tc = TIERS[f.tier].col;
+
+  // Info box
+  rect(4, 18, 116, 26, C.ink);
+  rect(4, 18, 116, 1, tc);
+  text('HOOKED!', 8, 21, C.yellow);
+  text(f.name, 8, 28, C.white);
+  text(f.tier, 8, 35, tc);
+
+  // Panel
+  rect(256, 18, 60, 148, C.ink);
+  // Progress meter (left)
+  rect(261, TRK.y, 6, TRK.h, C.navy);
+  const mh = Math.round(r.prog * TRK.h);
+  rect(261, TRK.y + TRK.h - mh, 6, mh, r.prog < 0.25 ? C.red : r.prog < 0.6 ? C.yellow : C.lime);
+  // Track and catch bar
+  rect(TRK.x - 1, TRK.y - 1, TRK.w + 2, TRK.h + 2, C.grey);
+  rect(TRK.x, TRK.y, TRK.w, TRK.h, C.navy);
+  rect(TRK.x, TRK.y + r.top * TRK.h, TRK.w, Math.round(r.bf * TRK.h), r.inside ? C.lime : C.slate);
+  // Fish
+  const fy = clamp(Math.round(TRK.y + r.p * TRK.h - f.img.height / 2),
+                   TRK.y, TRK.y + TRK.h - f.img.height);
+  drawFish(f, Math.round(TRK.x + TRK.w / 2 - f.img.width / 2), fy);
+}
+
+function drawCard() {
+  const f = caught, x = 52, y = 26, w = 216, h = 128, tc = TIERS[f.tier].col;
+  rect(x, y, w, h, tc);
+  rect(x + 2, y + 2, w - 4, h - 4, C.ink);
+
+  if (f.tier === 'Legendary') {
+    for (let i = 0; i < 8; i++) {
+      const sx = x + 6 + ((i * 53) % (w - 12));
+      const sy = y + 6 + ((i * 37) % (h - 12));
+      if (Math.floor(t * 3 + i) % 3 === 0) rect(sx, sy, 1, 1, C.white);
+    }
+  }
+  const s = 3, fh = f.img.height * s;
+  drawFish(f, x + 16, y + (h - fh) / 2 - 4, false, s);
+
+  const tx = x + 80;
+  text(f.name, tx, y + 14, C.yellow);
+  text(f.tier, tx, y + 26, tc);
+  text('VALUE ' + f.value + 'G', tx, y + 40, C.white);
+  text('CHANCE ' + (f.weight / TOTAL_WEIGHT * 100).toFixed(1) + '%', tx, y + 50, C.grey);
+  text('CAUGHT ' + counts[SPECIES.indexOf(f)], tx, y + 60, C.white);
+  textC('SPACE TO CONTINUE', x + w / 2, y + h - 12, C.lime);
+}
+
+function hintFor() {
+  switch (state) {
+    case S.IDLE:   return ['HOLD SPACE OR MOUSE TO CHARGE, RELEASE TO CAST', 'S: SELL YOUR BASKET FOR COINS'];
+    case S.CHARGE: return ['RELEASE TO CAST! POWER DECIDES HOW FAR', 'THE LINE FLIES'];
+    case S.FLY:    return ['HERE GOES...', ''];
+    case S.WAIT:   return ['WAITING FOR A BITE... PRESS SPACE TO REEL IN', 'S: SELL YOUR BASKET FOR COINS'];
+    case S.BITE:   return ['!!! PRESS SPACE NOW !!!', 'THE HOOK WINDOW IS SHORT'];
+    case S.REEL:   return ['HOLD SPACE TO LIFT THE BAR', 'KEEP THE FISH INSIDE THE GREEN BAR'];
+    case S.CAUGHT: return ['YOU CAUGHT IT!', 'PRESS SPACE TO CONTINUE'];
+    default:       return ['THE FISH GOT AWAY...', 'CAST AGAIN IN A MOMENT'];
+  }
+}
+
+function drawHUD() {
+  rect(0, 0, W, 9, C.ink);
+  text('COINS ' + coins, 3, 2, C.yellow);
+  textC('CATCHES ' + catches, W / 2, 2, C.white);
+  const bt = 'BASKET ' + basket.length;
+  text(bt, W - textW(bt) - 3, 2, C.aqua);
+
+  const [l1, l2] = hintFor();
+  rect(0, 166, W, 14, C.ink);
+  text(l1, 3, 169, C.white);
+  text(l2, 3, 175, C.grey);
+}
+
+function drawMsg() {
+  const w = textW(msg) + 8;
+  const x = Math.round((W - w) / 2);
+  rect(x, 14, w, 9, C.ink);
+  text(msg, x + 4, 16, msgCol);
+}
+
+function render() {
+  ctx.drawImage(bgCv, 0, 0);
+  drawClouds();
+  drawShimmer();
+  drawLilies();
+  drawRipples();
+  drawPlayer();
+  drawDog();
+  drawBubble();
+  drawLineAndBobber();
+  drawCharge();
+  if (state === S.REEL) drawReel();
+  if (state === S.CAUGHT) drawCard();
+  drawHUD();
+  if (msgT > 0) drawMsg();
+}
+
+// ---------- Main loop ----------
+buildBackground();
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  update(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>

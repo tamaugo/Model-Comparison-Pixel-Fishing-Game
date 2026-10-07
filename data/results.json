@@ -63,6 +63,17 @@
       "scores": { "creativity": 19, "design": 18, "enjoyability": 14, "feature": 22 },
       "cost_usd": 1.2175,
       "requests": 8
+    },
+    {
+      "id": "haiku-5-5-high-1m",
+      "name": "Haiku 5.5 High 1M",
+      "file": "games/Haiku-5_5-high-1M.html",
+      "game_title": "Pixel Pond",
+      "run_date": "2026-10-07",
+      "minutes": 7,
+      "minutes_note": "6 min 49 s",
+      "scores": { "creativity": 14, "design": 15, "enjoyability": 10, "feature": 6 },
+      "cost_usd": 0.07
     }
   ],
   "references": [
