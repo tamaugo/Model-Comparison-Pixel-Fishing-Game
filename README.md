@@ -29,7 +29,7 @@ Costs for the first six come from the OpenCode request log and are API-equivalen
 ## Notes on each game
 
 - **Grok 4.7 High**: the best by a wide margin. It has sound, decent gameplay and decent visuals, and the most realistic dog of the group. Its extra mechanic is a bait box that adds progression. It is very hard, and the second and third bait tiers are harder still. It has a fail condition.
-- **Haiku 5.5 High 1M**: really good for the price, at $0.07 for the prompt and 6 min 49 s. I think it is at its best when given a good enough prompt, where it can really excel, but it needs guidance. This is from my testing so far.
+- **Haiku 5.5 High 1M**: really good for the price, at $0.07 for the prompt and 6 min 49 s. I think it is at its best when given a good enough prompt, where it can really excel, but it needs guidance. This is from my testing so far. Its extra mechanic is selling the fish. It works and is okay, but nothing very interesting.
 - **Grok 4.6 High**: its extra mechanic is a fish log. It is very hard and has sound. The visuals are poor but not blurry. The dog is hard to recognise as a dog.
 - **Luna 6 High**: the UI is very blurry and sometimes hard to read. It has a fail condition but nothing especially interesting. It is not bad for the price and speed.
 - **LongCat Preview 2.5**: also a fish log. The fish is hidden behind the catch bar, and you have to be on it within a second or you fail. The dog is a shapeless blob.
